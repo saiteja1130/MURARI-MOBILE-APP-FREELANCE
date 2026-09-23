@@ -190,8 +190,9 @@ export const CheckoutScreen = ({ navigation }) => {
             setIsProcessing(false);
             Alert.alert('Payment Cancelled', error.description || 'Payment was not completed.');
           });
-      } else {
-        // Fallback for emulator / direct verification
+      } else if (__DEV__) {
+        // DEV ONLY: Fallback for emulator testing — never runs in production builds
+        console.warn('[DEV] Razorpay native module unavailable, using simulated payment flow.');
         const verifyRes = await api.post('/api/orders/verify-payment', {
           razorpay_order_id: razorpayOrderId,
           razorpay_payment_id: `pay_sim_${Date.now()}`,
@@ -208,7 +209,6 @@ export const CheckoutScreen = ({ navigation }) => {
           setIsProcessing(false);
           navigation.replace('OrderSuccess', { order: verifyRes.data.data });
         } else {
-          // If server rejects simulation, handle gracefully
           clearCart();
           setIsProcessing(false);
           navigation.replace('OrderSuccess', {
@@ -219,6 +219,13 @@ export const CheckoutScreen = ({ navigation }) => {
             },
           });
         }
+      } else {
+        // Production: Razorpay SDK must be available
+        setIsProcessing(false);
+        Alert.alert(
+          'Payment Unavailable',
+          'UPI payment service is temporarily unavailable. Please update the app or try again later.'
+        );
       }
     } catch (err) {
       setIsProcessing(false);

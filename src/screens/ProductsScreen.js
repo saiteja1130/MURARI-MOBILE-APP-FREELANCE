@@ -239,7 +239,7 @@ export const ProductsScreen = ({ route, navigation }) => {
         data={processedProducts}
         key={isSingleColumn ? 'single-col' : 'two-col'}
         numColumns={isSingleColumn ? 1 : 2}
-        keyExtractor={(item) => (item.id || item._id || Math.random()).toString()}
+        keyExtractor={(item, index) => (item.id || item._id || `product-${index}`).toString()}
         renderItem={({ item }) => (
           <ProductCard
             product={item}

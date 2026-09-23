@@ -81,7 +81,7 @@ export const DeleteAccountScreen = ({ navigation }) => {
             </Text>
             <TouchableOpacity
               style={styles.returnBtn}
-              onPress={() => navigation.navigate('HomeTab')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'HomeTab' })}
             >
               <Text style={styles.returnBtnText}>Return to Home</Text>
               <ArrowRight size={16} color={colors.surface} />

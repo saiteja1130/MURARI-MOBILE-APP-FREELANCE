@@ -318,7 +318,7 @@ export const CartProvider = ({ children }) => {
   }, [cartSubtotal, cart.length, freeShippingThreshold, baseShippingFee]);
 
   const cartTotal = useMemo(
-    () => (cartSubtotal > 0 ? cartSubtotal - discountAmount + shippingCost : 0),
+    () => (cartSubtotal > 0 ? Math.max(0, cartSubtotal - discountAmount + shippingCost) : 0),
     [cartSubtotal, discountAmount, shippingCost]
   );
 

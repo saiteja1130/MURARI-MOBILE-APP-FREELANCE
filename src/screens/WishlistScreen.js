@@ -32,7 +32,7 @@ export const WishlistScreen = ({ navigation }) => {
           </Text>
           <TouchableOpacity
             style={styles.exploreBtn}
-            onPress={() => navigation.navigate('ShopTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'ShopTab' })}
             activeOpacity={0.85}
           >
             <Text style={styles.exploreBtnText}>Discover Styles</Text>
@@ -69,7 +69,7 @@ export const WishlistScreen = ({ navigation }) => {
       <FlatList
         data={wishlistProducts}
         numColumns={2}
-        keyExtractor={(item) => (item.id || item._id || Math.random()).toString()}
+        keyExtractor={(item, index) => (item.id || item._id || `wishlist-${index}`).toString()}
         renderItem={({ item }) => <ProductCard product={item} />}
         columnWrapperStyle={styles.columnWrapper}
         contentContainerStyle={styles.listContent}

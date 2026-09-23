@@ -81,6 +81,23 @@ export const AuthProvider = ({ children }) => {
     [token, currentUser, openAuthModal]
   );
 
+  // Shared address normalizer — single source of truth for mapping backend → UI shape
+  const normalizeAddress = (a) => ({
+    id: a._id || a.id,
+    _id: a._id || a.id,
+    name: a.fullName,
+    fullName: a.fullName,
+    phone: a.phone,
+    street: a.street,
+    apartment: a.apartment || '',
+    city: a.city,
+    state: a.state,
+    postalCode: a.postalCode,
+    country: a.country || 'India',
+    addressType: a.addressType || 'home',
+    isDefault: !!a.isDefault,
+  });
+
   // Fetch addresses from backend
   const fetchAddresses = useCallback(async () => {
     const storedToken = await AsyncStorage.getItem('sumilux_token');
@@ -88,21 +105,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.get('/api/users/addresses');
       if (response.data?.status) {
-        const list = (response.data.data || []).map((a) => ({
-          id: a._id || a.id,
-          _id: a._id || a.id,
-          name: a.fullName,
-          fullName: a.fullName,
-          phone: a.phone,
-          street: a.street,
-          apartment: a.apartment || '',
-          city: a.city,
-          state: a.state,
-          postalCode: a.postalCode,
-          country: a.country || 'India',
-          addressType: a.addressType || 'home',
-          isDefault: !!a.isDefault,
-        }));
+        const list = (response.data.data || []).map(normalizeAddress);
         setUserAddresses(list);
       }
     } catch (err) {
@@ -307,21 +310,7 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         const response = await api.post('/api/users/addresses', payload);
         if (response.data?.status) {
-          const list = (response.data.data || []).map((a) => ({
-            id: a._id || a.id,
-            _id: a._id || a.id,
-            name: a.fullName,
-            fullName: a.fullName,
-            phone: a.phone,
-            street: a.street,
-            apartment: a.apartment || '',
-            city: a.city,
-            state: a.state,
-            postalCode: a.postalCode,
-            country: a.country || 'India',
-            addressType: a.addressType || 'home',
-            isDefault: !!a.isDefault,
-          }));
+          const list = (response.data.data || []).map(normalizeAddress);
           setUserAddresses(list);
           return list;
         }
@@ -364,21 +353,7 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         const response = await api.put(`/api/users/addresses/${targetId}`, payload);
         if (response.data?.status) {
-          const list = (response.data.data || []).map((a) => ({
-            id: a._id || a.id,
-            _id: a._id || a.id,
-            name: a.fullName,
-            fullName: a.fullName,
-            phone: a.phone,
-            street: a.street,
-            apartment: a.apartment || '',
-            city: a.city,
-            state: a.state,
-            postalCode: a.postalCode,
-            country: a.country || 'India',
-            addressType: a.addressType || 'home',
-            isDefault: !!a.isDefault,
-          }));
+          const list = (response.data.data || []).map(normalizeAddress);
           setUserAddresses(list);
           return list;
         }
@@ -402,21 +377,7 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         const response = await api.delete(`/api/users/addresses/${id}`);
         if (response.data?.status) {
-          const list = (response.data.data || []).map((a) => ({
-            id: a._id || a.id,
-            _id: a._id || a.id,
-            name: a.fullName,
-            fullName: a.fullName,
-            phone: a.phone,
-            street: a.street,
-            apartment: a.apartment || '',
-            city: a.city,
-            state: a.state,
-            postalCode: a.postalCode,
-            country: a.country || 'India',
-            addressType: a.addressType || 'home',
-            isDefault: !!a.isDefault,
-          }));
+          const list = (response.data.data || []).map(normalizeAddress);
           setUserAddresses(list);
           return list;
         }
@@ -434,21 +395,7 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         const response = await api.patch(`/api/users/addresses/${id}/default`);
         if (response.data?.status) {
-          const list = (response.data.data || []).map((a) => ({
-            id: a._id || a.id,
-            _id: a._id || a.id,
-            name: a.fullName,
-            fullName: a.fullName,
-            phone: a.phone,
-            street: a.street,
-            apartment: a.apartment || '',
-            city: a.city,
-            state: a.state,
-            postalCode: a.postalCode,
-            country: a.country || 'India',
-            addressType: a.addressType || 'home',
-            isDefault: !!a.isDefault,
-          }));
+          const list = (response.data.data || []).map(normalizeAddress);
           setUserAddresses(list);
           return list;
         }

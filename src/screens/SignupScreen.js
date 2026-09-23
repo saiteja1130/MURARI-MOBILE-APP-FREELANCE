@@ -50,9 +50,9 @@ export const SignupScreen = ({ navigation }) => {
       // Auto-login after successful registration
       try {
         await login(email.trim(), password.trim());
-        navigation.navigate('MainTabs');
+        navigation.replace('MainTabs');
       } catch (loginErr) {
-        navigation.navigate('Login');
+        navigation.replace('Login');
       }
     } catch (err) {
       setErrorMessage(err.message || 'Registration failed. Please try again.');

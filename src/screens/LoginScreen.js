@@ -35,7 +35,7 @@ export const LoginScreen = ({ navigation }) => {
     setErrorMessage('');
     try {
       await login(email.trim(), password);
-      navigation.goBack();
+      navigation.replace('MainTabs');
     } catch (err) {
       setErrorMessage(err.message || 'Invalid email or password.');
     } finally {
@@ -69,7 +69,7 @@ export const LoginScreen = ({ navigation }) => {
     setErrorMessage('');
     try {
       await loginWithOtp(email.trim(), otpCode.trim());
-      navigation.goBack();
+      navigation.replace('MainTabs');
     } catch (err) {
       setErrorMessage(err.message || 'Invalid or expired OTP code.');
     } finally {

@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Dimensions,
   Share,
-  TextInput,
 } from 'react-native';
 import {
   Heart,
@@ -42,6 +41,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     return products.find((p) => (p.id || p._id) === id) || null;
   }, [routeProduct, id, products]);
 
+  // All hooks MUST be declared before any early return (Rules of Hooks)
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedColorState, setSelectedColor] = useState(null);
+  const [selectedSizeState, setSelectedSize] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [expandedSection, setExpandedSection] = useState('details');
+
   if (!product) {
     return (
       <View style={styles.notFoundContainer}>
@@ -50,7 +56,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
           <Text style={styles.notFoundText}>This garment could not be loaded.</Text>
           <TouchableOpacity
             style={styles.backHomeBtn}
-            onPress={() => navigation.navigate('HomeTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'HomeTab' })}
           >
             <Text style={styles.backHomeText}>Return to Collections</Text>
           </TouchableOpacity>
@@ -59,20 +65,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     );
   }
 
+  // Derive effective values from product defaults (after guard)
+  const selectedColor = selectedColorState || product.colors?.[0] || { name: 'Standard', hex: '#1D241C' };
+  const selectedSize = selectedSizeState || product.sizes?.[0] || 'Standard';
+
   const galleryImages =
     product.galleryImages && product.galleryImages.length > 0
       ? product.galleryImages
       : [product.image];
-
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [selectedColor, setSelectedColor] = useState(product.colors?.[0] || { name: 'Standard', hex: '#1D241C' });
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || 'Standard');
-  const [quantity, setQuantity] = useState(1);
-  const [pincode, setPincode] = useState('');
-  const [deliveryStatus, setDeliveryStatus] = useState(null);
-
-  // Accordion states
-  const [expandedSection, setExpandedSection] = useState('details'); // 'details' | 'fabric' | 'shipping'
 
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -108,7 +108,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
   const handleBuyNow = () => {
     addToCart(product, selectedSize, selectedColor, quantity);
-    navigation.navigate('CartTab');
+    navigation.navigate('Checkout');
   };
 
   // Similar Products

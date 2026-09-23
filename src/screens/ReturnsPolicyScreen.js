@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import { RotateCcw } from 'lucide-react-native';
 import { colors, fonts, spacing, radius } from '../utils/theme';
 import Header from '../components/Header';
 

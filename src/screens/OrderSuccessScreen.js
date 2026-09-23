@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,18 @@ import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 
 export const OrderSuccessScreen = ({ route, navigation }) => {
   const { order } = route.params || {};
+
+  // Prevent user from navigating back to the empty checkout/cart
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Only block hardware back / swipe-back gestures
+      if (e.data.action.type === 'GO_BACK') {
+        e.preventDefault();
+        navigation.navigate('MainTabs', { screen: 'HomeTab' });
+      }
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const orderNum = order?.orderNumber || order?.id || `MGG-${Date.now().toString().slice(-6)}`;
   const total = order?.total || order?.amount || 0;
@@ -92,7 +104,7 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
         <View style={styles.actionsContainer}>
           <TouchableOpacity
             style={styles.trackOrdersBtn}
-            onPress={() => navigation.navigate('AccountTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'AccountTab' })}
             activeOpacity={0.88}
           >
             <Package size={18} color={colors.surface} />
@@ -102,7 +114,7 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
 
           <TouchableOpacity
             style={styles.continueShoppingBtn}
-            onPress={() => navigation.navigate('HomeTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'HomeTab' })}
             activeOpacity={0.85}
           >
             <Home size={18} color={colors.primary} />

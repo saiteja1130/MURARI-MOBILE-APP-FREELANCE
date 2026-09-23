@@ -9,6 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { colors, fonts } from '../utils/theme';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +18,16 @@ export const SplashScreen = ({ navigation }) => {
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
   const lineAnim = useRef(new Animated.Value(0)).current;
   const textFadeAnim = useRef(new Animated.Value(0)).current;
+  const { isLoadingAuth } = useAuth();
+  const animDone = useRef(false);
+  const authDone = useRef(false);
+
+  // Navigate only when BOTH animation is done AND auth state is resolved
+  const tryNavigate = () => {
+    if (animDone.current && authDone.current) {
+      navigation.replace('MainTabs');
+    }
+  };
 
   useEffect(() => {
     // Run sequence of animations
@@ -48,13 +59,22 @@ export const SplashScreen = ({ navigation }) => {
       ]),
     ]).start();
 
-    // Transition after splash animation
+    // Minimum splash display time
     const timer = setTimeout(() => {
-      navigation.replace('MainTabs');
+      animDone.current = true;
+      tryNavigate();
     }, 2400);
 
     return () => clearTimeout(timer);
   }, [navigation, fadeAnim, scaleAnim, textFadeAnim, lineAnim]);
+
+  // Watch auth loading state
+  useEffect(() => {
+    if (!isLoadingAuth) {
+      authDone.current = true;
+      tryNavigate();
+    }
+  }, [isLoadingAuth]);
 
   const lineWidth = lineAnim.interpolate({
     inputRange: [0, 1],
