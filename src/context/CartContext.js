@@ -324,27 +324,55 @@ export const CartProvider = ({ children }) => {
 
   const isInCart = useCallback(
     (productId) => {
-      if (!productId || !token) return false;
+      if (!productId) return false;
       const stringId = (productId?.id || productId?._id || productId).toString();
       return cart.some((item) => {
         const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
         return itemProdId === stringId;
       });
     },
-    [cart, token]
+    [cart]
   );
 
   const getCartItemQuantity = useCallback(
     (productId) => {
-      if (!productId || !token) return 0;
+      if (!productId) return 0;
       const stringId = (productId?.id || productId?._id || productId).toString();
-      const found = cart.find((item) => {
+      const matchingItems = cart.filter((item) => {
         const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
         return itemProdId === stringId;
       });
-      return found ? found.quantity : 0;
+      return matchingItems.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0);
     },
-    [cart, token]
+    [cart]
+  );
+
+  const getCartItem = useCallback(
+    (productId, selectedSize, selectedColor) => {
+      if (!productId) return null;
+      const stringId = (productId?.id || productId?._id || productId).toString();
+      const colorName = typeof selectedColor === 'object' ? selectedColor?.name : selectedColor;
+
+      if (selectedSize || colorName) {
+        const exactMatch = cart.find((item) => {
+          const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
+          if (itemProdId !== stringId) return false;
+          if (selectedSize && item.selectedSize !== selectedSize) return false;
+          if (colorName) {
+            const itemColor = typeof item.selectedColor === 'object' ? item.selectedColor?.name : item.selectedColor;
+            if (itemColor !== colorName) return false;
+          }
+          return true;
+        });
+        if (exactMatch) return exactMatch;
+      }
+
+      return cart.find((item) => {
+        const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
+        return itemProdId === stringId;
+      }) || null;
+    },
+    [cart]
   );
 
   return (
@@ -374,6 +402,7 @@ export const CartProvider = ({ children }) => {
         refreshCart: fetchBackendCart,
         isInCart,
         getCartItemQuantity,
+        getCartItem,
       }}
     >
       {children}

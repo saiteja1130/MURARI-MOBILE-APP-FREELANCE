@@ -8,15 +8,18 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
-import { Search, ShoppingBag, Heart, ArrowLeft, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Search, ShoppingBag, Heart, ArrowLeft, SlidersHorizontal, Sparkles, User } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors, fonts, spacing, radius } from '../utils/theme';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
+import { navigationRef } from '../navigations/AppNavigator';
 
 /**
  * Modern E-Commerce Mobile App Header
  * Features:
- * - Brand bar with luxury logo & live counters (Wishlist & Cart)
+ * - Brand bar with luxury logo & live counters (Account, Wishlist & Cart)
+ * - Safe nested navigation across stack and tab contexts
  * - Integrated native search pill with filter trigger
  * - Micro-marquee for promotional announcements
  */
@@ -32,15 +35,31 @@ export const Header = ({
   showRightActions = true,
   showWishlistAction = true,
   showCartAction = true,
+  showAccountAction = true,
 }) => {
   const navigation = useNavigation();
   const { openSearch, cartItemCount, wishlist } = useStore();
+  const { currentUser } = useAuth();
 
   const handleBack = () => {
     if (onBack) {
       onBack();
     } else if (navigation.canGoBack()) {
       navigation.goBack();
+    }
+  };
+
+  const navigateToTab = (tabName) => {
+    try {
+      if (navigation && typeof navigation.navigate === 'function') {
+        navigation.navigate('MainTabs', { screen: tabName });
+        return;
+      }
+    } catch (e) {
+      // Fall through to navigationRef
+    }
+    if (navigationRef && navigationRef.isReady()) {
+      navigationRef.navigate('MainTabs', { screen: tabName });
     }
   };
 
@@ -67,7 +86,7 @@ export const Header = ({
 
           {shouldShowLogo ? (
             <TouchableOpacity
-              onPress={() => navigation.navigate('HomeTab')}
+              onPress={() => navigateToTab('HomeTab')}
               activeOpacity={0.8}
               style={styles.brandContainer}
             >
@@ -92,18 +111,32 @@ export const Header = ({
           )}
         </View>
 
-        {/* Right Icon Actions: Wishlist & Bag */}
+        {/* Right Icon Actions: Account, Wishlist & Bag */}
         {showRightActions && (
           <View style={styles.rightActions}>
-            {showWishlistAction && (
+            {showAccountAction && (
               <TouchableOpacity
-                onPress={() => navigation.navigate('WishlistTab')}
+                onPress={() => navigateToTab('AccountTab')}
                 style={styles.actionIconBtn}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Heart size={22} color={colors.primary} />
-                {wishlist.length > 0 && (
+                <User size={21} color={colors.primary} />
+                {currentUser && (
+                  <View style={styles.authDotBadge} />
+                )}
+              </TouchableOpacity>
+            )}
+
+            {showWishlistAction && (
+              <TouchableOpacity
+                onPress={() => navigateToTab('WishlistTab')}
+                style={styles.actionIconBtn}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Heart size={21} color={colors.primary} />
+                {wishlist && wishlist.length > 0 && (
                   <View style={styles.counterBadge}>
                     <Text style={styles.counterBadgeText}>
                       {wishlist.length > 99 ? '99+' : wishlist.length}
@@ -115,12 +148,12 @@ export const Header = ({
 
             {showCartAction && (
               <TouchableOpacity
-                onPress={() => navigation.navigate('CartTab')}
+                onPress={() => navigateToTab('CartTab')}
                 style={styles.actionIconBtn}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <ShoppingBag size={22} color={colors.primary} />
+                <ShoppingBag size={21} color={colors.primary} />
                 {cartItemCount > 0 && (
                   <View style={[styles.counterBadge, styles.cartBadge]}>
                     <Text style={styles.counterBadgeText}>
@@ -231,6 +264,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+  },
+  authDotBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.gold,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
   },
   counterBadge: {
     position: 'absolute',

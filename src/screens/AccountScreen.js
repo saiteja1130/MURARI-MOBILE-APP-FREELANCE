@@ -228,7 +228,7 @@ export const AccountScreen = ({ navigation }) => {
 
             <TouchableOpacity
               style={styles.kpiChip}
-              onPress={() => navigation.navigate('WishlistTab')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'WishlistTab' })}
             >
               <Heart size={18} color={colors.danger} />
               <Text style={styles.kpiNumber}>{wishlist?.length || 0}</Text>
@@ -237,7 +237,7 @@ export const AccountScreen = ({ navigation }) => {
 
             <TouchableOpacity
               style={styles.kpiChip}
-              onPress={() => navigation.navigate('CartTab')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'CartTab' })}
             >
               <ShoppingBag size={18} color={colors.primary} />
               <Text style={styles.kpiNumber}>{cartItemCount || 0}</Text>

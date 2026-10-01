@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../api/api';
 
@@ -8,6 +8,10 @@ export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [token, setToken] = useState(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  // Synchronous refs to prevent race conditions during auth state transitions
+  const currentUserRef = useRef(null);
+  const tokenRef = useRef(null);
 
   // User addresses, orders, and payments
   const [userAddresses, setUserAddresses] = useState([]);
@@ -34,9 +38,12 @@ export const AuthProvider = ({ children }) => {
           AsyncStorage.getItem('sumilux_token'),
         ]);
         if (savedUser) {
-          setCurrentUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser);
+          currentUserRef.current = parsedUser;
+          setCurrentUser(parsedUser);
         }
         if (savedToken) {
+          tokenRef.current = savedToken;
           setToken(savedToken);
         }
       } catch (err) {
@@ -60,11 +67,14 @@ export const AuthProvider = ({ children }) => {
 
   const closeAuthModal = useCallback(() => {
     setIsAuthModalOpen(false);
+    setAuthModalConfig((prev) => ({ ...prev, onSuccess: null }));
   }, []);
 
   const requireAuth = useCallback(
     (actionCallback, { title = 'Sign In to Proceed', message = 'Please sign in to continue.' } = {}) => {
-      if (token && currentUser) {
+      const activeToken = token || tokenRef.current;
+      const activeUser = currentUser || currentUserRef.current;
+      if (activeToken && activeUser) {
         if (typeof actionCallback === 'function') {
           actionCallback();
         }
@@ -218,6 +228,8 @@ export const AuthProvider = ({ children }) => {
     if (response.data.status) {
       const u = response.data.user;
       const t = response.data.token;
+      currentUserRef.current = u;
+      tokenRef.current = t;
       setCurrentUser(u);
       setToken(t);
       await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
@@ -237,6 +249,8 @@ export const AuthProvider = ({ children }) => {
     if (response.data.status) {
       const u = response.data.user;
       const t = response.data.token;
+      currentUserRef.current = u;
+      tokenRef.current = t;
       setCurrentUser(u);
       setToken(t);
       await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
@@ -256,6 +270,8 @@ export const AuthProvider = ({ children }) => {
     if (response.data.status) {
       const u = response.data.user;
       const t = response.data.token;
+      currentUserRef.current = u;
+      tokenRef.current = t;
       setCurrentUser(u);
       setToken(t);
       await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
@@ -269,6 +285,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.put('/api/users/profile', profileData);
       if (response.data?.status) {
+        currentUserRef.current = response.data.user;
         setCurrentUser(response.data.user);
         await AsyncStorage.setItem('sumilux_user', JSON.stringify(response.data.user));
         return response.data;
@@ -281,6 +298,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    currentUserRef.current = null;
+    tokenRef.current = null;
     setCurrentUser(null);
     setToken(null);
     setUserAddresses([]);

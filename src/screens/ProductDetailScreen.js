@@ -22,6 +22,8 @@ import {
   Ruler,
   Check,
   Zap,
+  Minus,
+  Plus,
 } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useStore } from '../context/StoreContext';
@@ -33,7 +35,15 @@ const IMAGE_HEIGHT = width * 1.25;
 
 export const ProductDetailScreen = ({ route, navigation }) => {
   const { product: routeProduct, id } = route.params || {};
-  const { products, addToCart, isWishlisted, toggleWishlist } = useStore();
+  const {
+    products,
+    addToCart,
+    isWishlisted,
+    toggleWishlist,
+    getCartItem,
+    updateCartQuantity,
+    removeCartItem,
+  } = useStore();
 
   // Find product from store if only id was passed
   const product = useMemo(() => {
@@ -80,6 +90,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
   const prodId = product.id || product._id;
   const saved = isWishlisted(prodId);
+  const matchingCartItem = getCartItem(prodId, selectedSize, selectedColor?.name || selectedColor);
+  const inBagQty = matchingCartItem?.quantity || 0;
 
   const discountPercent =
     product.originalPrice && product.originalPrice > product.price
@@ -101,13 +113,33 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }
   };
 
-
   const handleAddToBag = () => {
     addToCart(product, selectedSize, selectedColor, quantity);
   };
 
+  const handleIncrement = () => {
+    if (!matchingCartItem) {
+      addToCart(product, selectedSize, selectedColor, 1);
+      return;
+    }
+    const targetId = matchingCartItem.cartItemId || matchingCartItem.id;
+    updateCartQuantity(targetId, inBagQty + 1);
+  };
+
+  const handleDecrement = () => {
+    if (!matchingCartItem) return;
+    const targetId = matchingCartItem.cartItemId || matchingCartItem.id;
+    if (inBagQty > 1) {
+      updateCartQuantity(targetId, inBagQty - 1);
+    } else {
+      removeCartItem(targetId);
+    }
+  };
+
   const handleBuyNow = () => {
-    addToCart(product, selectedSize, selectedColor, quantity);
+    if (inBagQty === 0) {
+      addToCart(product, selectedSize, selectedColor, quantity);
+    }
     navigation.navigate('Checkout');
   };
 
@@ -285,6 +317,55 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
         
 
+          {/* 5. Quantity Selector Section */}
+          <View style={styles.optionSection}>
+            <View style={styles.optionHeader}>
+              <Text style={styles.optionTitle}>SELECT QUANTITY</Text>
+              {inBagQty > 0 && (
+                <View style={styles.inBagBadge}>
+                  <Check size={12} color={colors.success} />
+                  <Text style={styles.inBagBadgeText}>{inBagQty} IN BAG</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.quantityPickerRow}>
+              <TouchableOpacity
+                style={[
+                  styles.qtyPickerBtn,
+                  (inBagQty > 0 ? inBagQty <= 1 : quantity <= 1) && styles.qtyPickerBtnDisabled,
+                ]}
+                onPress={() => {
+                  if (inBagQty > 0) {
+                    handleDecrement();
+                  } else {
+                    setQuantity((prev) => Math.max(1, prev - 1));
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Minus size={16} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.qtyDisplayBox}>
+                <Text style={styles.qtyDisplayText}>
+                  {inBagQty > 0 ? inBagQty : quantity}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.qtyPickerBtn}
+                onPress={() => {
+                  if (inBagQty > 0) {
+                    handleIncrement();
+                  } else {
+                    setQuantity((prev) => prev + 1);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Plus size={16} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* 6. Expandable Accordions */}
           <View style={styles.accordionsWrapper}>
             {/* Description */}
@@ -396,15 +477,42 @@ export const ProductDetailScreen = ({ route, navigation }) => {
           />
         </TouchableOpacity>
 
-        {/* Add To Bag Button */}
-        <TouchableOpacity
-          style={styles.addBagBtn}
-          onPress={handleAddToBag}
-          activeOpacity={0.85}
-        >
-          <ShoppingBag size={18} color={colors.primary} />
-          <Text style={styles.addBagText}>Add To Bag</Text>
-        </TouchableOpacity>
+        {/* Add To Bag or In-Bag Stepper */}
+        {inBagQty > 0 ? (
+          <View style={styles.bottomBarStepper}>
+            <TouchableOpacity
+              style={styles.bottomStepperActionBtn}
+              onPress={handleDecrement}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Minus size={16} color={colors.primary} />
+            </TouchableOpacity>
+
+            <View style={styles.bottomStepperTextWrap}>
+              <ShoppingBag size={14} color={colors.primary} />
+              <Text style={styles.bottomStepperQtyText}>{inBagQty} in Bag</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.bottomStepperActionBtn}
+              onPress={handleIncrement}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Plus size={16} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.addBagBtn}
+            onPress={handleAddToBag}
+            activeOpacity={0.85}
+          >
+            <ShoppingBag size={18} color={colors.primary} />
+            <Text style={styles.addBagText}>Add To Bag</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Buy Now Button */}
         <TouchableOpacity
@@ -835,6 +943,89 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 13,
     color: colors.primary,
+  },
+  bottomBarStepper: {
+    flex: 1,
+    height: 46,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.gold,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    backgroundColor: colors.goldPale || colors.surface,
+  },
+  bottomStepperActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.goldLight,
+    ...shadows.sm,
+  },
+  bottomStepperTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  bottomStepperQtyText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.primary,
+  },
+  inBagBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(46, 125, 50, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+  },
+  inBagBadgeText: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    color: colors.success,
+    letterSpacing: 0.5,
+  },
+  quantityPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  qtyPickerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyPickerBtnDisabled: {
+    opacity: 0.35,
+  },
+  qtyDisplayBox: {
+    minWidth: 48,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    paddingHorizontal: spacing.sm,
+  },
+  qtyDisplayText: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: colors.textPrimary,
   },
   buyNowBtn: {
     flex: 1,

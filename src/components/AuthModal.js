@@ -98,9 +98,17 @@ export const AuthModal = () => {
     setErrorMessage('');
     try {
       await login(email.trim(), password.trim());
+      Keyboard.dismiss();
+      const successCb = authModalConfig?.onSuccess;
       closeAuthModal();
-      if (typeof authModalConfig.onSuccess === 'function') {
-        authModalConfig.onSuccess();
+      if (typeof successCb === 'function') {
+        setTimeout(() => {
+          try {
+            successCb();
+          } catch (cbErr) {
+            console.warn('Post-auth callback error:', cbErr);
+          }
+        }, 120);
       }
     } catch (err) {
       setErrorMessage(err.response?.data?.message || err.message || 'Invalid email or password');
@@ -135,9 +143,17 @@ export const AuthModal = () => {
     setErrorMessage('');
     try {
       await loginWithOtp(email.trim(), otpCode.trim());
+      Keyboard.dismiss();
+      const successCb = authModalConfig?.onSuccess;
       closeAuthModal();
-      if (typeof authModalConfig.onSuccess === 'function') {
-        authModalConfig.onSuccess();
+      if (typeof successCb === 'function') {
+        setTimeout(() => {
+          try {
+            successCb();
+          } catch (cbErr) {
+            console.warn('Post-auth callback error:', cbErr);
+          }
+        }, 120);
       }
     } catch (err) {
       setErrorMessage(err.response?.data?.message || err.message || 'Invalid or expired OTP code');
@@ -168,9 +184,17 @@ export const AuthModal = () => {
         // In case auto-login is needed with verification
       }
 
+      Keyboard.dismiss();
+      const successCb = authModalConfig?.onSuccess;
       closeAuthModal();
-      if (typeof authModalConfig.onSuccess === 'function') {
-        authModalConfig.onSuccess();
+      if (typeof successCb === 'function') {
+        setTimeout(() => {
+          try {
+            successCb();
+          } catch (cbErr) {
+            console.warn('Post-auth callback error:', cbErr);
+          }
+        }, 120);
       }
     } catch (err) {
       setErrorMessage(err.response?.data?.message || err.message || 'Registration failed. Please try again.');

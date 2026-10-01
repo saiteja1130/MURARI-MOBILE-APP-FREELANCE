@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { Heart, Plus, Star } from 'lucide-react-native';
+import { Heart, Plus, Minus, Star } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useStore } from '../context/StoreContext';
@@ -17,12 +17,22 @@ const CARD_WIDTH = (width - spacing.md * 2 - spacing.sm) / 2;
 
 export const ProductCard = ({ product, style }) => {
   const navigation = useNavigation();
-  const { isWishlisted, toggleWishlist, addToCart } = useStore();
+  const {
+    isWishlisted,
+    toggleWishlist,
+    addToCart,
+    getCartItem,
+    updateCartQuantity,
+    removeCartItem,
+  } = useStore();
 
   if (!product) return null;
 
   const prodId = product.id || product._id;
   const saved = isWishlisted(prodId);
+  const cartItem = getCartItem(prodId);
+  const cartQty = cartItem?.quantity || 0;
+
   const discountPercent =
     product.originalPrice && product.originalPrice > product.price
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
@@ -38,6 +48,25 @@ export const ProductCard = ({ product, style }) => {
 
   const handleQuickAdd = () => {
     addToCart(product, product.sizes?.[0] || 'Standard', product.colors?.[0] || { name: 'Standard', hex: '#1D241C' }, 1);
+  };
+
+  const handleIncrement = () => {
+    if (!cartItem) {
+      handleQuickAdd();
+      return;
+    }
+    const targetId = cartItem.cartItemId || cartItem.id;
+    updateCartQuantity(targetId, cartQty + 1);
+  };
+
+  const handleDecrement = () => {
+    if (!cartItem) return;
+    const targetId = cartItem.cartItemId || cartItem.id;
+    if (cartQty > 1) {
+      updateCartQuantity(targetId, cartQty - 1);
+    } else {
+      removeCartItem(targetId);
+    }
   };
 
   return (
@@ -81,16 +110,38 @@ export const ProductCard = ({ product, style }) => {
           />
         </TouchableOpacity>
 
-        {/* Quick Add To Bag Button */}
+        {/* Quick Add To Bag / Stepper Button */}
         {product.isStockAvailable !== false && (
-          <TouchableOpacity
-            style={styles.quickAddBtn}
-            activeOpacity={0.85}
-            onPress={handleQuickAdd}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          >
-            <Plus size={16} color={colors.surface} />
-          </TouchableOpacity>
+          cartQty > 0 ? (
+            <View style={styles.stepperPill}>
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                activeOpacity={0.7}
+                onPress={handleDecrement}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Minus size={13} color={colors.surface} />
+              </TouchableOpacity>
+              <Text style={styles.stepperQtyText}>{cartQty}</Text>
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                activeOpacity={0.7}
+                onPress={handleIncrement}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Plus size={13} color={colors.surface} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.quickAddBtn}
+              activeOpacity={0.85}
+              onPress={handleQuickAdd}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Plus size={16} color={colors.surface} />
+            </TouchableOpacity>
+          )
         )}
 
         {/* Out of Stock Overlay */}
@@ -214,6 +265,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
     ...shadows.sm,
+  },
+  stepperPill: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: 3,
+    height: 28,
+    zIndex: 3,
+    ...shadows.md,
+    borderWidth: 1,
+    borderColor: colors.goldLight,
+  },
+  stepperBtn: {
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepperQtyText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: colors.goldLight,
+    paddingHorizontal: 4,
+    minWidth: 16,
+    textAlign: 'center',
   },
   outOfStockOverlay: {
     position: 'absolute',

@@ -224,6 +224,7 @@ export const StoreProvider = ({ children }) => {
         removePromoCode: cartContext.removePromoCode,
         isInCart: cartContext.isInCart,
         getCartItemQuantity: cartContext.getCartItemQuantity,
+        getCartItem: cartContext.getCartItem,
         // Wishlist values
         wishlist: wishlistContext.wishlist,
         wishlistProducts,
