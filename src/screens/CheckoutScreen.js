@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  AppState,
+  DeviceEventEmitter,
 } from 'react-native';
 import {
   Lock,
@@ -150,6 +152,148 @@ export const CheckoutScreen = ({ navigation }) => {
     };
   };
 
+  const pendingSessionRef = useRef(null);
+  const isFinalizingRef = useRef(false);
+
+  const handleOrderConfirmed = (confirmedOrder) => {
+    pendingSessionRef.current = null;
+    isFinalizingRef.current = false;
+    clearCart();
+    if (typeof fetchOrders === 'function') fetchOrders().catch(() => {});
+    setIsProcessing(false);
+    navigation.replace('OrderSuccess', { order: confirmedOrder });
+  };
+
+  const onPaymentSuccess = async (data) => {
+    if (isFinalizingRef.current) return;
+    isFinalizingRef.current = true;
+
+    const session = pendingSessionRef.current;
+    console.log('[Payment] Confirming payment with backend...', data);
+
+    const rzpPaymentId = data?.razorpay_payment_id || data?.payment_id || data?.razorpayPaymentId;
+    const rzpOrderId = data?.razorpay_order_id || data?.order_id || session?.razorpayOrderId;
+    const rzpSignature = data?.razorpay_signature || data?.signature;
+
+    if (rzpPaymentId && rzpOrderId && rzpSignature) {
+      try {
+        const verifyRes = await api.post('/api/orders/verify-payment', {
+          razorpay_order_id: rzpOrderId,
+          razorpay_payment_id: rzpPaymentId,
+          razorpay_signature: rzpSignature,
+          orderNumber: session?.orderNumber,
+          items: session?.orderPayload?.items,
+          shippingAddress: session?.orderPayload?.shippingAddress,
+          promoCode: session?.orderPayload?.promoCode || '',
+          notes: '',
+        });
+
+        if (verifyRes.data?.status && verifyRes.data?.data) {
+          handleOrderConfirmed(verifyRes.data.data);
+          return;
+        }
+      } catch (vErr) {
+        console.warn('[Payment] verify-payment fallback to check-session-payment:', vErr?.message);
+      }
+    }
+
+    // Direct Gateway check fallback
+    if (session?.razorpayOrderId) {
+      try {
+        const checkRes = await api.post('/api/orders/check-session-payment', {
+          razorpayOrderId: session.razorpayOrderId,
+          orderNumber: session.orderNumber,
+        });
+
+        if (checkRes.data?.status && checkRes.data?.isPaid && checkRes.data?.data) {
+          handleOrderConfirmed(checkRes.data.data);
+          return;
+        }
+      } catch (chkErr) {
+        console.warn('[Payment] check-session-payment error:', chkErr?.message);
+      }
+    }
+
+    isFinalizingRef.current = false;
+    setIsProcessing(false);
+    Alert.alert('Payment Confirmation', 'Your payment is being confirmed. Please check My Orders shortly.');
+  };
+
+  const onPaymentError = (error) => {
+    if (isFinalizingRef.current) return;
+
+    pendingSessionRef.current = null;
+    setIsProcessing(false);
+    const { isCancelled, title, message } = parseRazorpayError(error);
+
+    if (isCancelled) {
+      showToast({
+        type: 'info',
+        title: 'Payment Cancelled',
+        message: 'Payment was cancelled. Your items remain saved in your bag.',
+      });
+    } else {
+      Alert.alert(title, message, [{ text: 'OK' }]);
+    }
+  };
+
+  // 1. Android Native Event listener for RCTDeviceEventEmitter
+  useEffect(() => {
+    const successSub = DeviceEventEmitter.addListener('Razorpay::PAYMENT_SUCCESS', (data) => {
+      console.log('[Native Event] Razorpay::PAYMENT_SUCCESS received:', data);
+      onPaymentSuccess(data);
+    });
+
+    const errorSub = DeviceEventEmitter.addListener('Razorpay::PAYMENT_ERROR', (error) => {
+      console.log('[Native Event] Razorpay::PAYMENT_ERROR received:', error);
+      onPaymentError(error);
+    });
+
+    return () => {
+      successSub.remove();
+      errorSub.remove();
+    };
+  }, []);
+
+  // 2. AppState resume listener: When user returns from external UPI app (PhonePe / GPay)
+  useEffect(() => {
+    let timer1 = null;
+    let timer2 = null;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && pendingSessionRef.current && isProcessing && !isFinalizingRef.current) {
+        const session = pendingSessionRef.current;
+        console.log('[AppState] Active -> checking payment with Razorpay gateway...');
+
+        const checkStatus = async () => {
+          if (!pendingSessionRef.current || isFinalizingRef.current) return;
+          try {
+            const checkRes = await api.post('/api/orders/check-session-payment', {
+              razorpayOrderId: session.razorpayOrderId,
+              orderNumber: session.orderNumber,
+            });
+
+            if (checkRes.data?.status && checkRes.data?.isPaid && checkRes.data?.data) {
+              handleOrderConfirmed(checkRes.data.data);
+            }
+          } catch (e) {
+            // Ignore transient errors while waiting for native callback
+          }
+        };
+
+        // Check after 1.5s and 4s
+        timer1 = setTimeout(checkStatus, 1500);
+        timer2 = setTimeout(checkStatus, 4000);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      if (timer1) clearTimeout(timer1);
+      if (timer2) clearTimeout(timer2);
+    };
+  }, [isProcessing]);
+
   const handlePayAndPlaceOrder = async () => {
     // Validation
     if (!fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !postalCode.trim()) {
@@ -208,7 +352,14 @@ export const CheckoutScreen = ({ navigation }) => {
         throw new Error(orderRes.data?.message || 'Failed to initiate Razorpay order');
       }
 
-      const { razorpayOrderId, amount, key_id, currency, orderNumber, orderId } = orderRes.data.data;
+      const { razorpayOrderId, amount, key_id, currency, orderNumber } = orderRes.data.data;
+
+      pendingSessionRef.current = {
+        razorpayOrderId,
+        orderNumber,
+        orderPayload,
+      };
+      isFinalizingRef.current = false;
 
       // 2. Open Razorpay Checkout via Native SDK or verification fallback
       if (RazorpayCheckout && typeof RazorpayCheckout.open === 'function') {
@@ -227,7 +378,6 @@ export const CheckoutScreen = ({ navigation }) => {
             method: 'upi',
           },
           theme: { color: '#C69E58' },
-          // Restrict exclusively to UPI payment methods (hide Cards, NetBanking, Wallets, EMI, PayLater)
           method: {
             upi: true,
             card: false,
@@ -256,85 +406,25 @@ export const CheckoutScreen = ({ navigation }) => {
           },
         };
 
-        RazorpayCheckout.open(options)
-          .then(async (data) => {
-            // Payment Success -> Verify on backend
-            try {
-              const verifyRes = await api.post('/api/orders/verify-payment', {
-                razorpay_order_id: data.razorpay_order_id,
-                razorpay_payment_id: data.razorpay_payment_id,
-                razorpay_signature: data.razorpay_signature,
-                orderNumber: orderNumber,
-                items: orderPayload.items,
-                shippingAddress: orderPayload.shippingAddress,
-                promoCode: promoCode || '',
-                notes: '',
-              });
-
-              if (verifyRes.data?.status && verifyRes.data?.data) {
-                clearCart();
-                if (typeof fetchOrders === 'function') {
-                  fetchOrders().catch(() => {});
-                }
-                setIsProcessing(false);
-                navigation.replace('OrderSuccess', { order: verifyRes.data.data });
-              } else {
-                Alert.alert('Payment Verification', 'Signature verification failed.');
-                setIsProcessing(false);
-              }
-            } catch (vErr) {
-              setIsProcessing(false);
-              const vMsg = vErr.response?.data?.message || vErr.message || 'Payment confirmation error.';
-              Alert.alert('Verification Error', vMsg);
-            }
-          })
-          .catch((error) => {
+        // Safety timeout: 35s to prevent infinite spinner
+        setTimeout(() => {
+          if (isProcessing && !isFinalizingRef.current) {
             setIsProcessing(false);
-            const { isCancelled, title, message } = parseRazorpayError(error);
+          }
+        }, 35000);
 
-            if (isCancelled) {
-              // Non-intrusive floating toast instead of an annoying raw code alert
-              showToast({
-                type: 'info',
-                title: 'Payment Cancelled',
-                message: 'Payment was cancelled. Your items remain saved in your bag.',
-              });
-            } else {
-              // Real payment decline or failure: show clear, human-readable alert without raw code
-              Alert.alert(title, message, [{ text: 'OK' }]);
-            }
-          });
+        RazorpayCheckout.open(options)
+          .then(onPaymentSuccess)
+          .catch(onPaymentError);
       } else if (__DEV__) {
         // DEV ONLY: Fallback for emulator testing — never runs in production builds
         console.warn('[DEV] Razorpay native module unavailable, using simulated payment flow.');
-        const verifyRes = await api.post('/api/orders/verify-payment', {
+        await onPaymentSuccess({
           razorpay_order_id: razorpayOrderId,
           razorpay_payment_id: `pay_sim_${Date.now()}`,
           razorpay_signature: 'sig_simulation_verified',
-          orderNumber: orderNumber,
-          items: orderPayload.items,
-          shippingAddress: orderPayload.shippingAddress,
-          promoCode: promoCode || '',
-          notes: '',
         });
-
-        if (verifyRes.data?.status && verifyRes.data?.data) {
-          clearCart();
-          setIsProcessing(false);
-          navigation.replace('OrderSuccess', { order: verifyRes.data.data });
-        } else {
-          clearCart();
-          setIsProcessing(false);
-          navigation.replace('OrderSuccess', {
-            order: {
-              orderNumber,
-              total: cartTotal,
-              shippingAddress: orderPayload.shippingAddress,
-            },
-          });
-        }
       } else {
-        // Production: Razorpay SDK must be available
         setIsProcessing(false);
         Alert.alert(
           'Payment Unavailable',
