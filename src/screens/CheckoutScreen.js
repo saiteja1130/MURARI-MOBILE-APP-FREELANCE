@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -38,8 +39,8 @@ try {
 }
 
 export const CheckoutScreen = ({ navigation }) => {
-  const { cart, cartSubtotal, discountAmount, shippingCost, cartTotal, promoCode, clearCart } = useStore();
-  const { currentUser, token } = useAuth();
+  const { cart, cartSubtotal, discountAmount, shippingCost, cartTotal, promoCode, clearCart, showToast } = useStore();
+  const { currentUser, token, fetchOrders } = useAuth();
 
   // Form State - manual address per order
   const [fullName, setFullName] = useState(currentUser?.name || currentUser?.fullName || '');
@@ -66,6 +67,89 @@ export const CheckoutScreen = ({ navigation }) => {
     }
   }, [currentUser]);
 
+  // Robust Razorpay error normalizer to prevent raw JSON/code or 'undefined' alerts
+  const parseRazorpayError = (error) => {
+    let rawDesc = '';
+    let code = null;
+    let isCancelled = false;
+
+    if (typeof error === 'string') {
+      rawDesc = error;
+    } else if (error && typeof error === 'object') {
+      code = error.code !== undefined ? error.code : (error.error?.code !== undefined ? error.error.code : null);
+      rawDesc = error.description || error.error?.description || error.message || error.error?.message || '';
+
+      if (error.reason === 'payment_cancelled' || error.error?.reason === 'payment_cancelled') {
+        isCancelled = true;
+      }
+    }
+
+    // Check if error.description is a stringified JSON (common in Razorpay Android Native SDK)
+    if (typeof rawDesc === 'string' && (rawDesc.trim().startsWith('{') || rawDesc.trim().startsWith('['))) {
+      try {
+        const parsed = JSON.parse(rawDesc.trim());
+        if (parsed?.error?.description) {
+          rawDesc = parsed.error.description;
+        } else if (parsed?.error?.message) {
+          rawDesc = parsed.error.message;
+        }
+        if (parsed?.error?.code !== undefined) {
+          code = parsed.error.code;
+        }
+        if (parsed?.error?.reason === 'payment_cancelled') {
+          isCancelled = true;
+        }
+      } catch (e) {
+        // Fall back to original rawDesc
+      }
+    }
+
+    // Strip literal 'undefined' or 'null' strings
+    if (typeof rawDesc === 'string') {
+      const trimmed = rawDesc.trim();
+      if (trimmed === 'undefined' || trimmed === 'null' || trimmed === '') {
+        rawDesc = '';
+      }
+    } else {
+      rawDesc = '';
+    }
+
+    const lower = rawDesc.toLowerCase();
+
+    // Cancellation checks:
+    // - Razorpay code 0 or '0' (PAYMENT_CANCELED)
+    // - Razorpay code 2 or '2'
+    // - Explicit cancellation reason
+    // - Matching keywords
+    // - OR: Razorpay closed with empty/undefined description (user pressed back/dismissed)
+    if (
+      Number(code) === 0 ||
+      code === 0 ||
+      code === '0' ||
+      code === 2 ||
+      code === '2' ||
+      (code === 'BAD_REQUEST_ERROR' && (!rawDesc || lower.includes('cancel'))) ||
+      isCancelled ||
+      lower.includes('cancel') ||
+      lower.includes('back button') ||
+      lower.includes('dismiss') ||
+      lower.includes('user pressed back') ||
+      !rawDesc
+    ) {
+      return {
+        isCancelled: true,
+        title: 'Payment Cancelled',
+        message: 'Payment was not completed. Your items remain saved in your bag whenever you are ready.',
+      };
+    }
+
+    return {
+      isCancelled: false,
+      title: 'Payment Incomplete',
+      message: rawDesc || 'Payment could not be processed. Please try another UPI app or retry.',
+    };
+  };
+
   const handlePayAndPlaceOrder = async () => {
     // Validation
     if (!fullName.trim() || !phone.trim() || !street.trim() || !city.trim() || !postalCode.trim()) {
@@ -80,15 +164,29 @@ export const CheckoutScreen = ({ navigation }) => {
     setIsProcessing(true);
 
     const orderPayload = {
-      items: cart.map((item) => ({
-        id: item.product?._id || item.product?.id || item.id,
-        quantity: item.quantity,
-        selectedSize: item.selectedSize || 'Standard',
-        selectedColor: item.selectedColor || { name: 'Standard', hex: '#1D241C' },
-        price: item.product?.price,
-        name: item.product?.name,
-        image: item.product?.image || item.product?.images?.[0],
-      })),
+      items: cart.map((item) => {
+        const colorName = (item.selectedColor?.name || (typeof item.selectedColor === 'string' ? item.selectedColor : '')).trim().toLowerCase();
+        let matchedColorImage = '';
+        if (colorName && Array.isArray(item.product?.colorImages) && item.product.colorImages.length > 0) {
+          const match = item.product.colorImages.find(
+            (ci) => ci.color && ci.color.trim().toLowerCase() === colorName
+          );
+          if (match && Array.isArray(match.images) && match.images.length > 0) {
+            matchedColorImage = match.images[0];
+          }
+        }
+        const itemFinalImage = matchedColorImage || item.image || item.product?.image || item.product?.galleryImages?.[0] || '';
+
+        return {
+          id: item.product?._id || item.product?.id || item.id,
+          quantity: item.quantity,
+          selectedSize: item.selectedSize || 'Standard',
+          selectedColor: item.selectedColor || { name: 'Standard', hex: '#1D241C' },
+          price: item.product?.price,
+          name: item.product?.name,
+          image: itemFinalImage,
+        };
+      }),
       shippingAddress: {
         fullName: fullName.trim(),
         phone: phone.trim(),
@@ -175,6 +273,9 @@ export const CheckoutScreen = ({ navigation }) => {
 
               if (verifyRes.data?.status && verifyRes.data?.data) {
                 clearCart();
+                if (typeof fetchOrders === 'function') {
+                  fetchOrders().catch(() => {});
+                }
                 setIsProcessing(false);
                 navigation.replace('OrderSuccess', { order: verifyRes.data.data });
               } else {
@@ -182,13 +283,26 @@ export const CheckoutScreen = ({ navigation }) => {
                 setIsProcessing(false);
               }
             } catch (vErr) {
-              Alert.alert('Verification Error', vErr.message || 'Payment confirmation error.');
               setIsProcessing(false);
+              const vMsg = vErr.response?.data?.message || vErr.message || 'Payment confirmation error.';
+              Alert.alert('Verification Error', vMsg);
             }
           })
           .catch((error) => {
             setIsProcessing(false);
-            Alert.alert('Payment Cancelled', error.description || 'Payment was not completed.');
+            const { isCancelled, title, message } = parseRazorpayError(error);
+
+            if (isCancelled) {
+              // Non-intrusive floating toast instead of an annoying raw code alert
+              showToast({
+                type: 'info',
+                title: 'Payment Cancelled',
+                message: 'Payment was cancelled. Your items remain saved in your bag.',
+              });
+            } else {
+              // Real payment decline or failure: show clear, human-readable alert without raw code
+              Alert.alert(title, message, [{ text: 'OK' }]);
+            }
           });
       } else if (__DEV__) {
         // DEV ONLY: Fallback for emulator testing — never runs in production builds
@@ -229,10 +343,8 @@ export const CheckoutScreen = ({ navigation }) => {
       }
     } catch (err) {
       setIsProcessing(false);
-      Alert.alert(
-        'Order Initiation',
-        err.response?.data?.message || err.message || 'Unable to start checkout at this time.'
-      );
+      const backendMsg = err.response?.data?.message || err.message || 'Unable to start checkout at this time.';
+      Alert.alert('Order Initiation', backendMsg);
     }
   };
 
@@ -416,7 +528,7 @@ export const CheckoutScreen = ({ navigation }) => {
           </View>
 
           {/* Supported UPI Apps Row */}
-          <View style={styles.upiAppsContainer}>
+          {/* <View style={styles.upiAppsContainer}>
             <Text style={styles.upiAppsHeader}>POPULAR UPI APPS SUPPORTED</Text>
             <View style={styles.upiAppsRow}>
               <View style={styles.upiAppBadge}>
@@ -436,7 +548,7 @@ export const CheckoutScreen = ({ navigation }) => {
                 <Text style={styles.upiAppName}>BHIM / QR</Text>
               </View>
             </View>
-          </View>
+          </View> */}
 
           <View style={styles.paymentSecurityRow}>
             <Lock size={12} color={colors.textMuted} />
@@ -467,16 +579,47 @@ export const CheckoutScreen = ({ navigation }) => {
 
           {isOrderSummaryOpen && (
             <View style={styles.summaryBody}>
-              {cart.map((it) => (
-                <View key={it.cartItemId || it.id} style={styles.summaryItemRow}>
-                  <Text style={styles.summaryItemName} numberOfLines={1}>
-                    {it.quantity}× {it.product?.name} ({it.selectedSize})
-                  </Text>
-                  <Text style={styles.summaryItemPrice}>
-                    ₹{((it.product?.price || 0) * it.quantity).toLocaleString('en-IN')}
-                  </Text>
-                </View>
-              ))}
+              {cart.map((it) => {
+                const itColorName = (it.selectedColor?.name || (typeof it.selectedColor === 'string' ? it.selectedColor : '')).trim().toLowerCase();
+                let matchedColorImage = '';
+                if (itColorName && Array.isArray(it.product?.colorImages) && it.product.colorImages.length > 0) {
+                  const match = it.product.colorImages.find(
+                    (ci) => (ci.color || '').trim().toLowerCase() === itColorName
+                  );
+                  if (match && Array.isArray(match.images) && match.images.length > 0) {
+                    matchedColorImage = match.images[0];
+                  }
+                }
+                const itThumb = matchedColorImage || it.image || it.product?.image || (Array.isArray(it.product?.galleryImages) && it.product.galleryImages[0]) || '';
+                const itColorLabel = typeof it.selectedColor === 'object' ? it.selectedColor?.name : (it.selectedColor || 'Standard');
+                const itColorHex = typeof it.selectedColor === 'object' ? it.selectedColor?.hex : '#1D241C';
+
+                return (
+                  <View key={it.cartItemId || it.id} style={styles.summaryItemRow}>
+                    {itThumb ? (
+                      <Image
+                        source={{ uri: itThumb }}
+                        style={styles.summaryItemThumb}
+                        resizeMode="cover"
+                      />
+                    ) : null}
+                    <View style={styles.summaryItemInfo}>
+                      <Text style={styles.summaryItemName} numberOfLines={1}>
+                        {it.quantity}× {it.product?.name}
+                      </Text>
+                      <View style={styles.summaryItemMetaRow}>
+                        <View style={[styles.summaryColorDot, { backgroundColor: itColorHex }]} />
+                        <Text style={styles.summaryItemMeta}>
+                          {itColorLabel} • Size: {it.selectedSize}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.summaryItemPrice}>
+                      ₹{((it.product?.price || 0) * it.quantity).toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                );
+              })}
 
               <View style={styles.summaryDivider} />
 
@@ -800,15 +943,43 @@ const styles = StyleSheet.create({
   },
   summaryItemRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  summaryItemName: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    color: colors.textSecondary,
+  summaryItemThumb: {
+    width: 36,
+    height: 44,
+    borderRadius: radius.xs,
+    marginRight: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  summaryItemInfo: {
     flex: 1,
     marginRight: spacing.sm,
+  },
+  summaryItemName: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  summaryItemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  summaryColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0,0,0,0.2)',
+  },
+  summaryItemMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.textMuted,
   },
   summaryItemPrice: {
     fontFamily: fonts.medium,

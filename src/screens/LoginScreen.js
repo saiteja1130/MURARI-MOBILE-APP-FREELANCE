@@ -11,12 +11,15 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { Mail, Lock, Shield, ArrowRight, ArrowLeft } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Mail, Lock, Shield, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
 
 export const LoginScreen = ({ navigation }) => {
   const { login, loginWithOtp, requestOtp } = useAuth();
+  const { showToast } = useStore();
 
   const [mode, setMode] = useState('password'); // 'password' | 'otp'
   const [email, setEmail] = useState('');
@@ -27,25 +30,44 @@ export const LoginScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
 
   const handlePasswordLogin = async () => {
-    if (!email || !password) {
-      setErrorMessage('Please enter your email and password.');
+    if (!email.trim()) {
+      setErrorMessage('Please enter your email address.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password.');
       return;
     }
     setIsLoading(true);
     setErrorMessage('');
     try {
       await login(email.trim(), password);
+      showToast({
+        type: 'success',
+        title: 'Welcome Back!',
+        message: 'Signed in successfully.',
+      });
       navigation.replace('MainTabs');
     } catch (err) {
-      setErrorMessage(err.message || 'Invalid email or password.');
+      setErrorMessage(err.response?.data?.message || err.message || 'Invalid email or password.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleRequestOtp = async () => {
-    if (!email) {
+    if (!email.trim()) {
       setErrorMessage('Please enter your email address.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
     setIsLoading(true);
@@ -53,50 +75,66 @@ export const LoginScreen = ({ navigation }) => {
     try {
       await requestOtp(email.trim());
       setOtpSent(true);
+      showToast({
+        type: 'info',
+        title: 'OTP Dispatched',
+        message: 'A 6-digit verification code has been sent to your email.',
+      });
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to send OTP code.');
+      setErrorMessage(err.response?.data?.message || err.message || 'Failed to send OTP code.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleOtpLogin = async () => {
-    if (!email || !otpCode) {
+    if (!email.trim() || !otpCode.trim()) {
       setErrorMessage('Please enter your email and 6-digit OTP code.');
+      return;
+    }
+    if (otpCode.trim().length !== 6) {
+      setErrorMessage('OTP code must be exactly 6 digits.');
       return;
     }
     setIsLoading(true);
     setErrorMessage('');
     try {
       await loginWithOtp(email.trim(), otpCode.trim());
+      showToast({
+        type: 'success',
+        title: 'Welcome Back!',
+        message: 'Signed in successfully with OTP.',
+      });
       navigation.replace('MainTabs');
     } catch (err) {
-      setErrorMessage(err.message || 'Invalid or expired OTP code.');
+      setErrorMessage(err.response?.data?.message || err.message || 'Invalid or expired OTP code.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardContainer}
       >
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollBody}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          bounces={true}
         >
-          <ArrowLeft size={22} color={colors.primary} />
-        </TouchableOpacity>
+          {/* Back Button */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ArrowLeft size={22} color={colors.primary} />
+          </TouchableOpacity>
 
         {/* Brand Logo & Heading */}
         <View style={styles.header}>
@@ -141,6 +179,7 @@ export const LoginScreen = ({ navigation }) => {
         {/* Error Alert */}
         {errorMessage ? (
           <View style={styles.errorCard}>
+            <AlertCircle size={18} color={colors.danger} style={styles.errorIcon} />
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -258,18 +297,26 @@ export const LoginScreen = ({ navigation }) => {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.surface,
   },
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
   scrollBody: {
-    padding: spacing.xl,
-    justifyContent: 'center',
-    minHeight: '100%',
+    flexGrow: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 50 : 80,
   },
   backBtn: {
     width: 40,
@@ -277,11 +324,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
   },
   logo: {
     width: 180,
@@ -330,15 +378,25 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: colors.dangerLight,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(140, 51, 34, 0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorIcon: {
+    flexShrink: 0,
   },
   errorText: {
+    flex: 1,
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 12.5,
     color: colors.danger,
-    textAlign: 'center',
+    lineHeight: 18,
   },
   form: {
     gap: spacing.md,

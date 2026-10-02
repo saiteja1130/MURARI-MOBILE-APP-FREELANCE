@@ -51,15 +51,33 @@ export const Header = ({
 
   const navigateToTab = (tabName) => {
     try {
-      if (navigation && typeof navigation.navigate === 'function') {
+      // Check if current navigator directly has the tab route (e.g., inside TabNavigator)
+      const state = navigation.getState ? navigation.getState() : null;
+      const routeNames = state?.routeNames || [];
+
+      if (routeNames.includes(tabName)) {
+        navigation.navigate(tabName);
+        return;
+      }
+
+      // If we are in a stack screen (like ProductDetail, Checkout, etc.),
+      // routeNames contains 'MainTabs' and not the individual tab names.
+      if (routeNames.includes('MainTabs')) {
         navigation.navigate('MainTabs', { screen: tabName });
         return;
       }
+
+      // Fallback navigate to nested MainTabs screen
+      navigation.navigate('MainTabs', { screen: tabName });
+      return;
     } catch (e) {
-      // Fall through to navigationRef
-    }
-    if (navigationRef && navigationRef.isReady()) {
-      navigationRef.navigate('MainTabs', { screen: tabName });
+      if (navigationRef && navigationRef.isReady()) {
+        try {
+          navigationRef.navigate('MainTabs', { screen: tabName });
+        } catch (err) {
+          console.warn('Navigation error in Header:', err);
+        }
+      }
     }
   };
 

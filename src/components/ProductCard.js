@@ -30,7 +30,10 @@ export const ProductCard = ({ product, style }) => {
 
   const prodId = product.id || product._id;
   const saved = isWishlisted(prodId);
-  const cartItem = getCartItem(prodId);
+  const [selectedColor, setSelectedColor] = React.useState(
+    product.selectedColor || product.colors?.[0] || { name: 'Standard', hex: '#1D241C' }
+  );
+  const cartItem = getCartItem(prodId, null, selectedColor?.name || selectedColor);
   const cartQty = cartItem?.quantity || 0;
 
   const discountPercent =
@@ -38,16 +41,29 @@ export const ProductCard = ({ product, style }) => {
       ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
       : null;
 
+  const activeColorImage = React.useMemo(() => {
+    const colorName = (selectedColor?.name || (typeof selectedColor === 'string' ? selectedColor : '')).trim().toLowerCase();
+    if (colorName && Array.isArray(product.colorImages) && product.colorImages.length > 0) {
+      const match = product.colorImages.find(
+        (ci) => (ci.color || '').trim().toLowerCase() === colorName
+      );
+      if (match && Array.isArray(match.images) && match.images.length > 0) {
+        return match.images[0];
+      }
+    }
+    return product.image || product.galleryImages?.[0];
+  }, [selectedColor, product.colorImages, product.image, product.galleryImages]);
+
   const handleCardPress = () => {
-    navigation.navigate('ProductDetail', { product, id: prodId });
+    navigation.navigate('ProductDetail', { product: { ...product, image: activeColorImage, selectedColor }, id: prodId });
   };
 
   const handleWishlistPress = (e) => {
-    toggleWishlist(product);
+    toggleWishlist({ ...product, image: activeColorImage, selectedColor });
   };
 
   const handleQuickAdd = () => {
-    addToCart(product, product.sizes?.[0] || 'Standard', product.colors?.[0] || { name: 'Standard', hex: '#1D241C' }, 1);
+    addToCart({ ...product, image: activeColorImage }, product.sizes?.[0] || 'Standard', selectedColor, 1);
   };
 
   const handleIncrement = () => {
@@ -78,7 +94,7 @@ export const ProductCard = ({ product, style }) => {
       {/* Product Image Container */}
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: product.image || product.galleryImages?.[0] }}
+          source={{ uri: activeColorImage }}
           style={styles.image}
           resizeMode="cover"
         />
@@ -182,7 +198,32 @@ export const ProductCard = ({ product, style }) => {
             </Text>
           )}
         </View>
-        
+
+        {/* Color Swatches if multiple colors exist */}
+        {product.colors && product.colors.length > 1 && (
+          <View style={styles.colorSwatchesRow}>
+            {product.colors.slice(0, 4).map((c, cIdx) => {
+              const cName = typeof c === 'object' ? c.name : c;
+              const cHex = typeof c === 'object' ? c.hex : '#1D241C';
+              const isSelected = (selectedColor?.name || selectedColor) === cName;
+              return (
+                <TouchableOpacity
+                  key={cIdx}
+                  onPress={() => setSelectedColor(c)}
+                  style={[
+                    styles.miniColorDot,
+                    { backgroundColor: cHex },
+                    isSelected && styles.miniColorDotActive,
+                  ]}
+                  activeOpacity={0.8}
+                />
+              );
+            })}
+            {product.colors.length > 4 && (
+              <Text style={styles.moreColorsText}>+{product.colors.length - 4}</Text>
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -197,6 +238,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...shadows.sm,
+  },
+  colorSwatchesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+  },
+  miniColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.15)',
+  },
+  miniColorDotActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+    transform: [{ scale: 1.25 }],
+  },
+  moreColorsText: {
+    fontSize: 9,
+    fontFamily: fonts.medium,
+    color: colors.textMuted,
   },
   imageContainer: {
     width: '100%',

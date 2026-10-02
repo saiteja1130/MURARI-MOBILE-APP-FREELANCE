@@ -144,6 +144,13 @@ export const normalizeProduct = (item) => {
     colors,
     sizes,
     variants: item.variants || [],
+    colorImages: Array.isArray(item.colorImages)
+      ? item.colorImages.map((ci) => ({
+          color: ci.color || '',
+          colorHex: ci.colorHex || '#1D241C',
+          images: (ci.images || []).map((img) => resolveImageUrl(img)),
+        }))
+      : [],
     totalStock: item.isStockAvailable !== false ? 99 : 0,
     isStockAvailable: item.isStockAvailable !== false,
     rating: item.rating || 5.0,

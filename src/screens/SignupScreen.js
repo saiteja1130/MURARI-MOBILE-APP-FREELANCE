@@ -12,12 +12,15 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { User, Mail, Lock, Phone, ArrowRight, ArrowLeft, Check } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { User, Mail, Lock, Phone, ArrowRight, ArrowLeft, Check, AlertCircle } from 'lucide-react-native';
 import { colors, fonts, spacing, radius } from '../utils/theme';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
 
 export const SignupScreen = ({ navigation }) => {
   const { signup, login } = useAuth();
+  const { showToast } = useStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -28,8 +31,22 @@ export const SignupScreen = ({ navigation }) => {
   const [errorMessage, setErrorMessage] = useState('');
 
   const handleSignup = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setErrorMessage('Please fill in your name, email, and password.');
+    if (!name.trim() || name.trim().length < 2) {
+      setErrorMessage('Please enter your full name (at least 2 characters).');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim() || !emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    const cleanPhone = phone.trim().replace(/[\s-+]/g, '');
+    if (phone.trim() && !/^[6-9]\d{9}$/.test(cleanPhone.slice(-10))) {
+      setErrorMessage('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters long.');
       return;
     }
     if (!agreedToTerms) {
@@ -47,39 +64,52 @@ export const SignupScreen = ({ navigation }) => {
         password: password.trim(),
       });
 
+      showToast({
+        type: 'success',
+        title: 'Account Created!',
+        message: 'Welcome to Murari\'s Glam & Glow.',
+      });
+
       // Auto-login after successful registration
       try {
         await login(email.trim(), password.trim());
         navigation.replace('MainTabs');
       } catch (loginErr) {
+        showToast({
+          type: 'info',
+          title: 'Sign In Required',
+          message: 'Account created! Please sign in with your credentials.',
+        });
         navigation.replace('Login');
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Registration failed. Please try again.');
+      setErrorMessage(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardContainer}
       >
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollBody}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          bounces={true}
         >
-          <ArrowLeft size={22} color={colors.primary} />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ArrowLeft size={22} color={colors.primary} />
+          </TouchableOpacity>
 
         <View style={styles.header}>
           <Image
@@ -95,6 +125,7 @@ export const SignupScreen = ({ navigation }) => {
 
         {errorMessage ? (
           <View style={styles.errorCard}>
+            <AlertCircle size={18} color={colors.danger} style={styles.errorIcon} />
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -214,17 +245,26 @@ export const SignupScreen = ({ navigation }) => {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.surface,
   },
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
   scrollBody: {
-    padding: spacing.xl,
-    paddingBottom: spacing.xxxl,
+    flexGrow: 1,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 60 : 90,
   },
   backBtn: {
     width: 40,
@@ -236,6 +276,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
+    marginTop: spacing.xs,
     marginBottom: spacing.lg,
   },
   logo: {
@@ -259,15 +300,25 @@ const styles = StyleSheet.create({
   },
   errorCard: {
     backgroundColor: colors.dangerLight,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(140, 51, 34, 0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorIcon: {
+    flexShrink: 0,
   },
   errorText: {
+    flex: 1,
     fontFamily: fonts.medium,
-    fontSize: 12,
+    fontSize: 12.5,
     color: colors.danger,
-    textAlign: 'center',
+    lineHeight: 18,
   },
   form: {
     gap: spacing.sm,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -289,16 +290,35 @@ export const AccountScreen = ({ navigation }) => {
                   </View>
 
                   {/* Order Items */}
-                  {(ord.items || []).map((it, idx) => (
-                    <View key={idx} style={styles.orderItemRow}>
-                      <Text style={styles.orderItemName} numberOfLines={1}>
-                        {it.quantity}× {it.name}
-                      </Text>
-                      <Text style={styles.orderItemPrice}>
-                        ₹{(it.price * it.quantity).toLocaleString('en-IN')}
-                      </Text>
-                    </View>
-                  ))}
+                  {(ord.items || []).map((it, idx) => {
+                    const itemImg = it.image || it.product?.image || (Array.isArray(it.product?.images) && it.product.images[0]) || '';
+                    const colorName = typeof it.selectedColor === 'object' ? it.selectedColor?.name : (it.selectedColor || it.color);
+
+                    return (
+                      <View key={idx} style={styles.orderItemRow}>
+                        {itemImg ? (
+                          <Image
+                            source={{ uri: itemImg }}
+                            style={styles.orderItemThumb}
+                            resizeMode="cover"
+                          />
+                        ) : null}
+                        <View style={{ flex: 1, marginRight: spacing.sm }}>
+                          <Text style={styles.orderItemName} numberOfLines={1}>
+                            {it.quantity}× {it.name}
+                          </Text>
+                          {colorName ? (
+                            <Text style={styles.orderItemMeta}>
+                              Color: {colorName} {it.selectedSize ? `• Size: ${it.selectedSize}` : ''}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.orderItemPrice}>
+                          ₹{(it.price * it.quantity).toLocaleString('en-IN')}
+                        </Text>
+                      </View>
+                    );
+                  })}
 
                   <View style={styles.orderDivider} />
 
@@ -797,14 +817,27 @@ const styles = StyleSheet.create({
   },
   orderItemRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 6,
+  },
+  orderItemThumb: {
+    width: 38,
+    height: 46,
+    borderRadius: radius.xs,
+    marginRight: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
   },
   orderItemName: {
-    fontFamily: fonts.regular,
+    fontFamily: fonts.semiBold,
     fontSize: 12,
-    color: colors.textSecondary,
-    flex: 1,
+    color: colors.textPrimary,
+  },
+  orderItemMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   orderItemPrice: {
     fontFamily: fonts.semiBold,

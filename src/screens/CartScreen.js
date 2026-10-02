@@ -152,6 +152,18 @@ export const CartScreen = ({ navigation }) => {
           {cart.map((item) => {
             const product = item.product || {};
             const itemKey = item.cartItemId || item.id;
+            const colorName = (item.selectedColor?.name || (typeof item.selectedColor === 'string' ? item.selectedColor : '')).trim().toLowerCase();
+            let matchedColorImage = '';
+            if (colorName && Array.isArray(product.colorImages) && product.colorImages.length > 0) {
+              const match = product.colorImages.find(
+                (ci) => ci.color && ci.color.trim().toLowerCase() === colorName
+              );
+              if (match && Array.isArray(match.images) && match.images.length > 0) {
+                matchedColorImage = match.images[0];
+              }
+            }
+            const displayImage = matchedColorImage || item.image || product.image || product.galleryImages?.[0];
+
             return (
               <View key={itemKey} style={styles.cartItemCard}>
                 <TouchableOpacity
@@ -164,7 +176,7 @@ export const CartScreen = ({ navigation }) => {
                   }
                 >
                   <Image
-                    source={{ uri: product.image || product.galleryImages?.[0] }}
+                    source={{ uri: displayImage }}
                     style={styles.itemImage}
                     resizeMode="cover"
                   />

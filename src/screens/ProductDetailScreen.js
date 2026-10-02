@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,8 @@ import {
   Zap,
   Minus,
   Plus,
+  ArrowRight,
+  Trash2,
 } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useStore } from '../context/StoreContext';
@@ -79,10 +81,28 @@ export const ProductDetailScreen = ({ route, navigation }) => {
   const selectedColor = selectedColorState || product.colors?.[0] || { name: 'Standard', hex: '#1D241C' };
   const selectedSize = selectedSizeState || product.sizes?.[0] || 'Standard';
 
-  const galleryImages =
-    product.galleryImages && product.galleryImages.length > 0
+  // Color-aware gallery: show images matching selectedColor if colorImages exist,
+  // otherwise fall back to the full flat galleryImages array.
+  const galleryImages = useMemo(() => {
+    if (selectedColor && product.colorImages && product.colorImages.length > 0) {
+      const colorKey = (selectedColor.name || selectedColor).toLowerCase();
+      const match = product.colorImages.find(
+        (ci) => (ci.color || '').toLowerCase() === colorKey
+      );
+      if (match && match.images && match.images.length > 0) {
+        return match.images;
+      }
+    }
+    // Fallback to flat images gallery
+    return product.galleryImages && product.galleryImages.length > 0
       ? product.galleryImages
       : [product.image];
+  }, [selectedColor, product.colorImages, product.galleryImages, product.image]);
+
+  // Reset gallery to first image whenever the selected color changes
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [selectedColor]);
 
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -114,12 +134,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
   };
 
   const handleAddToBag = () => {
-    addToCart(product, selectedSize, selectedColor, quantity);
+    const activeColorImage = galleryImages?.[0] || product.image;
+    addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, quantity);
   };
 
   const handleIncrement = () => {
+    const activeColorImage = galleryImages?.[0] || product.image;
     if (!matchingCartItem) {
-      addToCart(product, selectedSize, selectedColor, 1);
+      addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, 1);
       return;
     }
     const targetId = matchingCartItem.cartItemId || matchingCartItem.id;
@@ -137,8 +159,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
   };
 
   const handleBuyNow = () => {
+    const activeColorImage = galleryImages?.[0] || product.image;
     if (inBagQty === 0) {
-      addToCart(product, selectedSize, selectedColor, quantity);
+      addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, quantity);
     }
     navigation.navigate('Checkout');
   };
@@ -192,14 +215,30 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             </Text>
           </View>
 
-          {/* Share Button on Top Right */}
-          <TouchableOpacity
-            style={styles.floatingShareBtn}
-            onPress={handleShare}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Share2 size={18} color={colors.primary} />
-          </TouchableOpacity>
+          {/* Floating Actions on Top Right: Share and Wishlist stacked */}
+          <View style={styles.floatingImageActions}>
+            <TouchableOpacity
+              style={styles.floatingActionBtn}
+              onPress={handleShare}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.8}
+            >
+              <Share2 size={18} color={colors.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.floatingActionBtn, saved && styles.floatingWishlistBtnActive]}
+              onPress={() => toggleWishlist(product)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.8}
+            >
+              <Heart
+                size={18}
+                color={saved ? colors.danger : colors.primary}
+                fill={saved ? colors.danger : 'transparent'}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 2. Product Meta & Pricing */}
@@ -290,10 +329,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             <View style={styles.optionSection}>
               <View style={styles.optionHeader}>
                 <Text style={styles.optionTitle}>SELECT SIZE</Text>
-                <TouchableOpacity style={styles.sizeGuideBtn}>
+                {/* <TouchableOpacity style={styles.sizeGuideBtn}>
                   <Ruler size={13} color={colors.goldHover} />
                   <Text style={styles.sizeGuideText}>Size Guide</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
               </View>
               <View style={styles.sizesRow}>
                 {product.sizes.map((s) => {
@@ -321,48 +360,72 @@ export const ProductDetailScreen = ({ route, navigation }) => {
           <View style={styles.optionSection}>
             <View style={styles.optionHeader}>
               <Text style={styles.optionTitle}>SELECT QUANTITY</Text>
-              {inBagQty > 0 && (
+              {inBagQty > 0 ? (
                 <View style={styles.inBagBadge}>
                   <Check size={12} color={colors.success} />
                   <Text style={styles.inBagBadgeText}>{inBagQty} IN BAG</Text>
                 </View>
+              ) : (
+                <Text style={styles.stockAvailabilityText}>In Stock • Ready to Ship</Text>
               )}
             </View>
+
             <View style={styles.quantityPickerRow}>
-              <TouchableOpacity
-                style={[
-                  styles.qtyPickerBtn,
-                  (inBagQty > 0 ? inBagQty <= 1 : quantity <= 1) && styles.qtyPickerBtnDisabled,
-                ]}
-                onPress={() => {
-                  if (inBagQty > 0) {
-                    handleDecrement();
-                  } else {
-                    setQuantity((prev) => Math.max(1, prev - 1));
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Minus size={16} color={colors.textPrimary} />
-              </TouchableOpacity>
-              <View style={styles.qtyDisplayBox}>
-                <Text style={styles.qtyDisplayText}>
-                  {inBagQty > 0 ? inBagQty : quantity}
+              {/* Luxury Stepper Pill */}
+              <View style={styles.modernStepperPill}>
+                <TouchableOpacity
+                  style={[
+                    styles.qtyPickerBtn,
+                    (inBagQty > 0 ? inBagQty <= 1 : quantity <= 1) && styles.qtyPickerBtnDisabled,
+                  ]}
+                  onPress={() => {
+                    if (inBagQty > 0) {
+                      handleDecrement();
+                    } else {
+                      setQuantity((prev) => Math.max(1, prev - 1));
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  {inBagQty === 1 ? (
+                    <Trash2 size={16} color={colors.danger} />
+                  ) : (
+                    <Minus size={16} color={colors.textPrimary} />
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.qtyDisplayBox}>
+                  <Text style={styles.qtyDisplayText}>
+                    {inBagQty > 0 ? inBagQty : quantity}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.qtyPickerBtn}
+                  onPress={() => {
+                    if (inBagQty > 0) {
+                      handleIncrement();
+                    } else {
+                      setQuantity((prev) => prev + 1);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Plus size={16} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Dynamic Subtotal Preview */}
+              <View style={styles.qtyPricePreviewCard}>
+                <Text style={styles.qtyPriceLabel}>
+                  {inBagQty > 0 ? 'Item Total in Bag' : 'Selected Total'}
+                </Text>
+                <Text style={styles.qtyPriceAmount}>
+                  ₹{((product.price || 0) * (inBagQty > 0 ? inBagQty : quantity)).toLocaleString('en-IN')}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={styles.qtyPickerBtn}
-                onPress={() => {
-                  if (inBagQty > 0) {
-                    handleIncrement();
-                  } else {
-                    setQuantity((prev) => prev + 1);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Plus size={16} color={colors.textPrimary} />
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -464,65 +527,71 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
       {/* Sticky Bottom Action Bar */}
       <View style={styles.bottomBar}>
-        {/* Wishlist Button */}
-        <TouchableOpacity
-          style={[styles.wishlistBarBtn, saved && styles.wishlistBarBtnActive]}
-          onPress={() => toggleWishlist(product)}
-          activeOpacity={0.8}
-        >
-          <Heart
-            size={22}
-            color={saved ? colors.danger : colors.primary}
-            fill={saved ? colors.danger : 'transparent'}
-          />
-        </TouchableOpacity>
-
         {/* Add To Bag or In-Bag Stepper */}
         {inBagQty > 0 ? (
-          <View style={styles.bottomBarStepper}>
-            <TouchableOpacity
-              style={styles.bottomStepperActionBtn}
-              onPress={handleDecrement}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Minus size={16} color={colors.primary} />
-            </TouchableOpacity>
+          <>
+            {/* Elegant Luxury Stepper Pill */}
+            <View style={styles.bottomBarStepperPill}>
+              <TouchableOpacity
+                style={styles.bottomStepperCircleBtn}
+                onPress={handleDecrement}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {inBagQty === 1 ? (
+                  <Trash2 size={16} color={colors.danger} />
+                ) : (
+                  <Minus size={16} color={colors.primary} />
+                )}
+              </TouchableOpacity>
 
-            <View style={styles.bottomStepperTextWrap}>
-              <ShoppingBag size={14} color={colors.primary} />
-              <Text style={styles.bottomStepperQtyText}>{inBagQty} in Bag</Text>
+              <View style={styles.bottomStepperCenter}>
+                <Text style={styles.bottomStepperNum}>{inBagQty}</Text>
+                <Text style={styles.bottomStepperMicroLabel}>IN BAG</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.bottomStepperCircleBtn}
+                onPress={handleIncrement}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Plus size={16} color={colors.primary} />
+              </TouchableOpacity>
             </View>
 
+            {/* High-Converting "View Bag" Primary Button */}
             <TouchableOpacity
-              style={styles.bottomStepperActionBtn}
-              onPress={handleIncrement}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.viewBagBtn}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'CartTab' })}
+              activeOpacity={0.85}
             >
-              <Plus size={16} color={colors.primary} />
+              <ShoppingBag size={18} color={colors.surface} />
+              <Text style={styles.viewBagText}>View Bag</Text>
+              <ArrowRight size={16} color={colors.surface} />
             </TouchableOpacity>
-          </View>
+          </>
         ) : (
-          <TouchableOpacity
-            style={styles.addBagBtn}
-            onPress={handleAddToBag}
-            activeOpacity={0.85}
-          >
-            <ShoppingBag size={18} color={colors.primary} />
-            <Text style={styles.addBagText}>Add To Bag</Text>
-          </TouchableOpacity>
-        )}
+          <>
+            <TouchableOpacity
+              style={styles.addBagBtn}
+              onPress={handleAddToBag}
+              activeOpacity={0.85}
+            >
+              <ShoppingBag size={18} color={colors.primary} />
+              <Text style={styles.addBagText}>Add To Bag</Text>
+            </TouchableOpacity>
 
-        {/* Buy Now Button */}
-        <TouchableOpacity
-          style={styles.buyNowBtn}
-          onPress={handleBuyNow}
-          activeOpacity={0.85}
-        >
-          <Zap size={18} color={colors.surface} />
-          <Text style={styles.buyNowText}>Buy Now</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.buyNowBtn}
+              onPress={handleBuyNow}
+              activeOpacity={0.85}
+            >
+              <Zap size={18} color={colors.surface} />
+              <Text style={styles.buyNowText}>Buy Now</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );
@@ -587,17 +656,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.surface,
   },
-  floatingShareBtn: {
+  floatingImageActions: {
     position: 'absolute',
     top: 14,
     right: 14,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    gap: 10,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  floatingActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.sm,
+  },
+  floatingWishlistBtnActive: {
+    backgroundColor: colors.surface,
   },
   detailsCard: {
     backgroundColor: colors.surface,
@@ -908,20 +985,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
     gap: spacing.sm,
     ...shadows.lg,
   },
   wishlistBarBtn: {
-    width: 46,
-    height: 46,
+    width: 48,
+    height: 48,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.surface,
   },
   wishlistBarBtnActive: {
     borderColor: colors.danger,
@@ -929,34 +1008,50 @@ const styles = StyleSheet.create({
   },
   addBagBtn: {
     flex: 1,
-    height: 46,
+    height: 48,
     borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.primary,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: colors.surface,
   },
   addBagText: {
     fontFamily: fonts.bold,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.primary,
   },
-  bottomBarStepper: {
+  buyNowBtn: {
     flex: 1,
-    height: 46,
+    height: 48,
     borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
+    backgroundColor: colors.goldHover,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    backgroundColor: colors.goldPale || colors.surface,
+    gap: 8,
+    ...shadows.sm,
   },
-  bottomStepperActionBtn: {
+  buyNowText: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.surface,
+  },
+  bottomBarStepperPill: {
+    flex: 1,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  bottomStepperCircleBtn: {
     width: 34,
     height: 34,
     borderRadius: radius.sm,
@@ -964,18 +1059,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.goldLight,
+    borderColor: colors.border,
     ...shadows.sm,
   },
-  bottomStepperTextWrap: {
-    flexDirection: 'row',
+  bottomStepperCenter: {
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  bottomStepperQtyText: {
+  bottomStepperNum: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    color: colors.primary,
+    lineHeight: 18,
+  },
+  bottomStepperMicroLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 8,
+    color: colors.textSecondary,
+    letterSpacing: 0.6,
+  },
+  viewBagBtn: {
+    flex: 1.15,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    ...shadows.md,
+  },
+  viewBagText: {
     fontFamily: fonts.bold,
     fontSize: 13,
-    color: colors.primary,
+    color: colors.surface,
+    letterSpacing: 0.5,
+  },
+  stockAvailabilityText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: colors.success,
   },
   inBagBadge: {
     flexDirection: 'row',
@@ -983,7 +1107,7 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: 'rgba(46, 125, 50, 0.1)',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radius.xs,
   },
   inBagBadgeText: {
@@ -995,16 +1119,23 @@ const styles = StyleSheet.create({
   quantityPickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: 4,
+    marginTop: 6,
   },
-  qtyPickerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.sm,
+  modernStepperPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    padding: 3,
+    ...shadows.sm,
+  },
+  qtyPickerBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1012,14 +1143,10 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   qtyDisplayBox: {
-    minWidth: 48,
-    height: 40,
+    minWidth: 44,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
     paddingHorizontal: spacing.sm,
   },
   qtyDisplayText: {
@@ -1027,20 +1154,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textPrimary,
   },
-  buyNowBtn: {
+  qtyPricePreviewCard: {
     flex: 1,
-    height: 46,
+    marginLeft: spacing.md,
+    backgroundColor: colors.goldPale || '#FBF7F0',
     borderRadius: radius.md,
-    backgroundColor: colors.goldHover,
-    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: colors.goldLight || '#F3E6D0',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
     justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
   },
-  buyNowText: {
+  qtyPriceLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  qtyPriceAmount: {
     fontFamily: fonts.bold,
-    fontSize: 13,
-    color: colors.surface,
+    fontSize: 14,
+    color: colors.primary,
+    marginTop: 1,
   },
 });
 

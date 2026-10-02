@@ -222,63 +222,103 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token, fetchAddresses, fetchOrders, fetchPayments]);
 
+  // Helper to extract clear backend error messages
+  const extractErrorMessage = (error, fallback) => {
+    return error.response?.data?.message || error.message || fallback;
+  };
+
   // Auth Actions
   const login = async (email, password) => {
-    const response = await api.post('/api/auth/login', { email, password });
-    if (response.data.status) {
-      const u = response.data.user;
-      const t = response.data.token;
-      currentUserRef.current = u;
-      tokenRef.current = t;
-      setCurrentUser(u);
-      setToken(t);
-      await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
-      await AsyncStorage.setItem('sumilux_token', t);
-      return response.data;
+    try {
+      const response = await api.post('/api/auth/login', { email, password });
+      if (response.data.status) {
+        const u = response.data.user;
+        const t = response.data.token;
+        currentUserRef.current = u;
+        tokenRef.current = t;
+        setCurrentUser(u);
+        setToken(t);
+        await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
+        await AsyncStorage.setItem('sumilux_token', t);
+        return response.data;
+      }
+      throw new Error(response.data.message || 'Login failed');
+    } catch (err) {
+      const msg = extractErrorMessage(err, 'Invalid email or password');
+      const error = new Error(msg);
+      error.response = err.response;
+      throw error;
     }
-    throw new Error(response.data.message || 'Login failed');
   };
 
   const requestOtp = async (email) => {
-    const response = await api.post('/api/auth/request-otp', { email });
-    return response.data;
+    try {
+      const response = await api.post('/api/auth/request-otp', { email });
+      return response.data;
+    } catch (err) {
+      const msg = extractErrorMessage(err, 'Failed to request OTP code');
+      const error = new Error(msg);
+      error.response = err.response;
+      throw error;
+    }
   };
 
   const loginWithOtp = async (email, otpCode) => {
-    const response = await api.post('/api/auth/login-otp', { email, otpCode });
-    if (response.data.status) {
-      const u = response.data.user;
-      const t = response.data.token;
-      currentUserRef.current = u;
-      tokenRef.current = t;
-      setCurrentUser(u);
-      setToken(t);
-      await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
-      await AsyncStorage.setItem('sumilux_token', t);
-      return response.data;
+    try {
+      const response = await api.post('/api/auth/login-otp', { email, otpCode });
+      if (response.data.status) {
+        const u = response.data.user;
+        const t = response.data.token;
+        currentUserRef.current = u;
+        tokenRef.current = t;
+        setCurrentUser(u);
+        setToken(t);
+        await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
+        await AsyncStorage.setItem('sumilux_token', t);
+        return response.data;
+      }
+      throw new Error(response.data.message || 'OTP Login failed');
+    } catch (err) {
+      const msg = extractErrorMessage(err, 'Invalid or expired OTP code');
+      const error = new Error(msg);
+      error.response = err.response;
+      throw error;
     }
-    throw new Error(response.data.message || 'Login failed');
   };
 
   const signup = async (userData) => {
-    const response = await api.post('/api/auth/signup', userData);
-    return response.data;
+    try {
+      const response = await api.post('/api/auth/signup', userData);
+      return response.data;
+    } catch (err) {
+      const msg = extractErrorMessage(err, 'Registration failed. Please try again.');
+      const error = new Error(msg);
+      error.response = err.response;
+      throw error;
+    }
   };
 
   const verifyEmail = async (email, otpCode) => {
-    const response = await api.post('/api/auth/verify-email', { email, otpCode });
-    if (response.data.status) {
-      const u = response.data.user;
-      const t = response.data.token;
-      currentUserRef.current = u;
-      tokenRef.current = t;
-      setCurrentUser(u);
-      setToken(t);
-      await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
-      await AsyncStorage.setItem('sumilux_token', t);
-      return response.data;
+    try {
+      const response = await api.post('/api/auth/verify-email', { email, otpCode });
+      if (response.data.status) {
+        const u = response.data.user;
+        const t = response.data.token;
+        currentUserRef.current = u;
+        tokenRef.current = t;
+        setCurrentUser(u);
+        setToken(t);
+        await AsyncStorage.setItem('sumilux_user', JSON.stringify(u));
+        await AsyncStorage.setItem('sumilux_token', t);
+        return response.data;
+      }
+      throw new Error(response.data.message || 'Verification failed');
+    } catch (err) {
+      const msg = extractErrorMessage(err, 'Verification failed. Please check your code.');
+      const error = new Error(msg);
+      error.response = err.response;
+      throw error;
     }
-    throw new Error(response.data.message || 'Verification failed');
   };
 
   const updateProfile = async (profileData) => {

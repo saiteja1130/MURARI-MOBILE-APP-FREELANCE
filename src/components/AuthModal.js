@@ -13,11 +13,13 @@ import {
   Dimensions,
   StatusBar,
 } from 'react-native';
-import { X, Lock, Mail, ArrowRight, Shield, User, Phone } from 'lucide-react-native';
+import { X, Lock, Mail, ArrowRight, Shield, User, Phone, AlertCircle } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
 
 export const AuthModal = () => {
+  const { showToast } = useStore();
   const {
     isAuthModalOpen,
     authModalConfig,
@@ -90,14 +92,24 @@ export const AuthModal = () => {
   if (!isAuthModalOpen) return null;
 
   const handlePasswordLogin = async () => {
-    if (!email.trim() || !password.trim()) {
+    if (!email.trim() || !password) {
       setErrorMessage('Please fill in your email and password');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address');
       return;
     }
     setIsLoading(true);
     setErrorMessage('');
     try {
-      await login(email.trim(), password.trim());
+      await login(email.trim(), password);
+      showToast({
+        type: 'success',
+        title: 'Welcome Back!',
+        message: 'Signed in successfully.',
+      });
       Keyboard.dismiss();
       const successCb = authModalConfig?.onSuccess;
       closeAuthModal();
@@ -122,11 +134,21 @@ export const AuthModal = () => {
       setErrorMessage('Please enter your email address');
       return;
     }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address');
+      return;
+    }
     setIsLoading(true);
     setErrorMessage('');
     try {
       await requestOtp(email.trim());
       setOtpSent(true);
+      showToast({
+        type: 'info',
+        title: 'OTP Sent',
+        message: 'Verification code sent to your email.',
+      });
     } catch (err) {
       setErrorMessage(err.response?.data?.message || err.message || 'Failed to send OTP code');
     } finally {
@@ -139,10 +161,19 @@ export const AuthModal = () => {
       setErrorMessage('Please enter email and 6-digit OTP code');
       return;
     }
+    if (otpCode.trim().length !== 6) {
+      setErrorMessage('OTP code must be exactly 6 digits');
+      return;
+    }
     setIsLoading(true);
     setErrorMessage('');
     try {
       await loginWithOtp(email.trim(), otpCode.trim());
+      showToast({
+        type: 'success',
+        title: 'Welcome Back!',
+        message: 'Signed in successfully with OTP.',
+      });
       Keyboard.dismiss();
       const successCb = authModalConfig?.onSuccess;
       closeAuthModal();
@@ -163,8 +194,17 @@ export const AuthModal = () => {
   };
 
   const handleSignup = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setErrorMessage('Please enter your name, email, and password.');
+    if (!name.trim() || name.trim().length < 2) {
+      setErrorMessage('Please enter your full name (minimum 2 characters)');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email.trim() || !emailRegex.test(email.trim())) {
+      setErrorMessage('Please enter a valid email address');
+      return;
+    }
+    if (!password || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters');
       return;
     }
     setIsLoading(true);
@@ -175,6 +215,12 @@ export const AuthModal = () => {
         email: email.trim(),
         phone: phone.trim() || '9876543210',
         password: password.trim(),
+      });
+
+      showToast({
+        type: 'success',
+        title: 'Account Created!',
+        message: 'Welcome to Murari\'s Glam & Glow.',
       });
 
       // Auto-login after successful registration
@@ -300,7 +346,10 @@ export const AuthModal = () => {
             showsVerticalScrollIndicator={true}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            contentContainerStyle={styles.scrollForm}
+            contentContainerStyle={[
+              styles.scrollForm,
+              keyboardHeight > 0 && { paddingBottom: spacing.xxxl + 30 },
+            ]}
             bounces={false}
           >
             {/* Sub Mode Pills for Sign In (Password vs OTP) */}
@@ -337,6 +386,7 @@ export const AuthModal = () => {
             {/* Error Alert Banner */}
             {errorMessage ? (
               <View style={styles.errorBox}>
+                <AlertCircle size={16} color={colors.danger} style={styles.errorIcon} />
                 <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             ) : null}
@@ -655,11 +705,21 @@ const styles = StyleSheet.create({
   },
   errorBox: {
     backgroundColor: colors.dangerLight,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(140, 51, 34, 0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorIcon: {
+    flexShrink: 0,
   },
   errorText: {
+    flex: 1,
     fontFamily: fonts.medium,
     fontSize: 12,
     color: colors.danger,
