@@ -154,14 +154,36 @@ export const CheckoutScreen = ({ navigation }) => {
 
   const pendingSessionRef = useRef(null);
   const isFinalizingRef = useRef(false);
+  // Mirrors isProcessing state — readable inside closures without stale capture
+  const isProcessingRef = useRef(false);
+  // Tracks mount status to guard navigation after async operations
+  const isMountedRef = useRef(true);
+  // Stable refs so DeviceEventEmitter always calls the latest handler version
+  const onPaymentSuccessRef = useRef(null);
+  const onPaymentErrorRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const setProcessing = (val) => {
+    isProcessingRef.current = val;
+    setIsProcessing(val);
+  };
 
   const handleOrderConfirmed = (confirmedOrder) => {
     pendingSessionRef.current = null;
     isFinalizingRef.current = false;
+    setProcessing(false);
     clearCart();
     if (typeof fetchOrders === 'function') fetchOrders().catch(() => {});
-    setIsProcessing(false);
-    navigation.replace('OrderSuccess', { order: confirmedOrder });
+    // Guard: only navigate if the screen is still mounted
+    if (isMountedRef.current) {
+      navigation.replace('OrderSuccess', { order: confirmedOrder });
+    }
   };
 
   const onPaymentSuccess = async (data) => {
@@ -215,7 +237,7 @@ export const CheckoutScreen = ({ navigation }) => {
     }
 
     isFinalizingRef.current = false;
-    setIsProcessing(false);
+    setProcessing(false);
     Alert.alert('Payment Confirmation', 'Your payment is being confirmed. Please check My Orders shortly.');
   };
 
@@ -223,7 +245,7 @@ export const CheckoutScreen = ({ navigation }) => {
     if (isFinalizingRef.current) return;
 
     pendingSessionRef.current = null;
-    setIsProcessing(false);
+    setProcessing(false);
     const { isCancelled, title, message } = parseRazorpayError(error);
 
     if (isCancelled) {
@@ -237,16 +259,21 @@ export const CheckoutScreen = ({ navigation }) => {
     }
   };
 
+  // Keep callback refs in sync with the latest render — safe for DeviceEventEmitter
+  onPaymentSuccessRef.current = onPaymentSuccess;
+  onPaymentErrorRef.current = onPaymentError;
+
   // 1. Android Native Event listener for RCTDeviceEventEmitter
+  // Uses stable callback refs so stale closures are never an issue — safe with []
   useEffect(() => {
     const successSub = DeviceEventEmitter.addListener('Razorpay::PAYMENT_SUCCESS', (data) => {
       console.log('[Native Event] Razorpay::PAYMENT_SUCCESS received:', data);
-      onPaymentSuccess(data);
+      onPaymentSuccessRef.current?.(data);
     });
 
     const errorSub = DeviceEventEmitter.addListener('Razorpay::PAYMENT_ERROR', (error) => {
       console.log('[Native Event] Razorpay::PAYMENT_ERROR received:', error);
-      onPaymentError(error);
+      onPaymentErrorRef.current?.(error);
     });
 
     return () => {
@@ -256,12 +283,15 @@ export const CheckoutScreen = ({ navigation }) => {
   }, []);
 
   // 2. AppState resume listener: When user returns from external UPI app (PhonePe / GPay)
+  // Uses isProcessingRef (not isProcessing state) so the listener never re-subscribes
+  // and never reads a stale closure value.
   useEffect(() => {
     let timer1 = null;
     let timer2 = null;
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && pendingSessionRef.current && isProcessing && !isFinalizingRef.current) {
+      // Read live values via refs — no stale closure risk
+      if (nextAppState === 'active' && pendingSessionRef.current && isProcessingRef.current && !isFinalizingRef.current) {
         const session = pendingSessionRef.current;
         console.log('[AppState] Active -> checking payment with Razorpay gateway...');
 
@@ -274,14 +304,14 @@ export const CheckoutScreen = ({ navigation }) => {
             });
 
             if (checkRes.data?.status && checkRes.data?.isPaid && checkRes.data?.data) {
-              handleOrderConfirmed(checkRes.data.data);
+              onPaymentSuccessRef.current?.(checkRes.data.data);
             }
           } catch (e) {
             // Ignore transient errors while waiting for native callback
           }
         };
 
-        // Check after 1.5s and 4s
+        // Check after 1.5s and 4s to allow native Razorpay callback to arrive first
         timer1 = setTimeout(checkStatus, 1500);
         timer2 = setTimeout(checkStatus, 4000);
       }
@@ -292,7 +322,7 @@ export const CheckoutScreen = ({ navigation }) => {
       if (timer1) clearTimeout(timer1);
       if (timer2) clearTimeout(timer2);
     };
-  }, [isProcessing]);
+  }, []); // ✅ safe with [] — all state read through refs
 
   const handlePayAndPlaceOrder = async () => {
     // Validation
@@ -305,7 +335,7 @@ export const CheckoutScreen = ({ navigation }) => {
       return;
     }
 
-    setIsProcessing(true);
+    setProcessing(true);
 
     const orderPayload = {
       items: cart.map((item) => {
@@ -407,15 +437,24 @@ export const CheckoutScreen = ({ navigation }) => {
         };
 
         // Safety timeout: 35s to prevent infinite spinner
+        // Uses isProcessingRef — not the stale closure value of isProcessing state
         setTimeout(() => {
-          if (isProcessing && !isFinalizingRef.current) {
-            setIsProcessing(false);
+          if (isProcessingRef.current && !isFinalizingRef.current) {
+            console.warn('[Payment] Safety timeout fired — resetting spinner');
+            setProcessing(false);
           }
         }, 35000);
 
-        RazorpayCheckout.open(options)
-          .then(onPaymentSuccess)
-          .catch(onPaymentError);
+        // Fire-and-forget: do NOT chain .then()/.catch() here on Android.
+        // DeviceEventEmitter (above) is the single authoritative callback source.
+        // Chaining both causes double-invocation → double navigation.replace() → crash.
+        RazorpayCheckout.open(options).catch((err) => {
+          // Only handle synchronous open() errors (e.g. invalid options).
+          // Normal payment errors/cancellations come via DeviceEventEmitter.
+          if (!isFinalizingRef.current && err?.code !== undefined) {
+            onPaymentErrorRef.current?.(err);
+          }
+        });
       } else if (__DEV__) {
         // DEV ONLY: Fallback for emulator testing — never runs in production builds
         console.warn('[DEV] Razorpay native module unavailable, using simulated payment flow.');
@@ -432,7 +471,7 @@ export const CheckoutScreen = ({ navigation }) => {
         );
       }
     } catch (err) {
-      setIsProcessing(false);
+      setProcessing(false);
       const backendMsg = err.response?.data?.message || err.message || 'Unable to start checkout at this time.';
       Alert.alert('Order Initiation', backendMsg);
     }
