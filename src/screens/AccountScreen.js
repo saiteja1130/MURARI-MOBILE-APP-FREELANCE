@@ -273,19 +273,30 @@ export const AccountScreen = ({ navigation }) => {
                       <Text style={styles.orderNumberText}>Order #{ord.orderNumber || ord.id.slice(-6)}</Text>
                       <Text style={styles.orderDateText}>{ord.date}</Text>
                     </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        ord.status === 'delivered'
-                          ? styles.statusDelivered
-                          : ord.status === 'cancelled'
-                          ? styles.statusCancelled
-                          : styles.statusProcessing,
-                      ]}
-                    >
-                      <Text style={styles.statusBadgeText}>
-                        {(ord.status || 'Confirmed').toUpperCase()}
-                      </Text>
+                    <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          ord.status === 'delivered'
+                            ? styles.statusDelivered
+                            : ord.status === 'cancelled'
+                            ? styles.statusCancelled
+                            : styles.statusProcessing,
+                        ]}
+                      >
+                        <Text style={styles.statusBadgeText}>
+                          {(ord.status || 'Confirmed').toUpperCase()}
+                        </Text>
+                      </View>
+                      {ord.paymentStatus === 'cod_pending' ? (
+                        <View style={styles.codPendingBadge}>
+                          <Text style={styles.codPendingBadgeText}>COD PENDING</Text>
+                        </View>
+                      ) : ord.paymentMethod === 'cod' && ord.paymentStatus === 'paid' ? (
+                        <View style={styles.codPaidBadge}>
+                          <Text style={styles.codPaidBadgeText}>COD PAID</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
 
@@ -814,6 +825,34 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 9,
     color: colors.primary,
+  },
+  codPendingBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  codPendingBadgeText: {
+    fontFamily: fonts.bold,
+    fontSize: 8,
+    color: '#1D4ED8',
+    letterSpacing: 0.5,
+  },
+  codPaidBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  codPaidBadgeText: {
+    fontFamily: fonts.bold,
+    fontSize: 8,
+    color: '#15803D',
+    letterSpacing: 0.5,
   },
   orderItemRow: {
     flexDirection: 'row',

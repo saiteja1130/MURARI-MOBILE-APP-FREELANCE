@@ -216,6 +216,7 @@ export const StoreProvider = ({ children }) => {
         cartTotal: cartContext.cartTotal,
         hasOutOfStockItems: cartContext.hasOutOfStockItems,
         outOfStockItems: cartContext.outOfStockItems,
+        storeSettings: cartContext.storeSettings,
         addToCart: addToCartWithFeedback,
         updateCartQuantity: cartContext.updateCartQuantity,
         removeCartItem: cartContext.removeCartItem,

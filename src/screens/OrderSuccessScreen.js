@@ -43,12 +43,18 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
 
           <View style={styles.badgeRow}>
             <Sparkles size={14} color={colors.gold} />
-            <Text style={styles.badgeText}>PAYMENT VERIFIED &amp; CONFIRMED</Text>
+            <Text style={styles.badgeText}>
+              {order?.paymentMethod === 'cod'
+                ? 'ORDER CONFIRMED • CASH ON DELIVERY'
+                : 'PAYMENT VERIFIED & CONFIRMED'}
+            </Text>
           </View>
 
           <Text style={styles.successTitle}>Order Placed Successfully!</Text>
           <Text style={styles.successSubtitle}>
-            Thank you for choosing Murari's Glam &amp; Glow. Your handcrafted couture is being prepared with utmost care.
+            {order?.paymentMethod === 'cod'
+              ? 'Thank you for choosing Murari\'s Glam & Glow. Please keep cash or UPI ready at the time of doorstep delivery.'
+              : 'Thank you for choosing Murari\'s Glam & Glow. Your handcrafted couture is being prepared with utmost care.'}
           </Text>
 
           <View style={styles.orderIdPill}>
@@ -62,13 +68,17 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
           <Text style={styles.detailsTitle}>ORDER SUMMARY</Text>
 
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Total Amount Paid</Text>
+            <Text style={styles.detailLabel}>
+              {order?.paymentMethod === 'cod' ? 'Total to Pay on Delivery' : 'Total Amount Paid'}
+            </Text>
             <Text style={styles.detailValueBold}>₹{Number(total).toLocaleString('en-IN')}</Text>
           </View>
 
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Payment Method</Text>
-            <Text style={styles.detailValue}>UPI (Razorpay)</Text>
+            <Text style={styles.detailValue}>
+              {order?.paymentMethod === 'cod' ? 'Cash on Delivery (COD)' : 'UPI (Razorpay)'}
+            </Text>
           </View>
 
           <View style={styles.detailRow}>

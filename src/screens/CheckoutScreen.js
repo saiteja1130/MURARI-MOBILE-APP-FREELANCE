@@ -25,6 +25,7 @@ import {
   MapPin,
   ChevronDown,
   ChevronUp,
+  Banknote,
 } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
 import { useStore } from '../context/StoreContext';
@@ -41,7 +42,7 @@ try {
 }
 
 export const CheckoutScreen = ({ navigation }) => {
-  const { cart, cartSubtotal, discountAmount, shippingCost, cartTotal, promoCode, clearCart, showToast } = useStore();
+  const { cart, cartSubtotal, discountAmount, shippingCost, cartTotal, promoCode, clearCart, showToast, storeSettings } = useStore();
   const { currentUser, token, fetchOrders } = useAuth();
 
   // Form State - manual address per order
@@ -55,8 +56,19 @@ export const CheckoutScreen = ({ navigation }) => {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('India');
 
+  // Payment Method: 'upi' | 'cod'
+  const [paymentMethod, setPaymentMethod] = useState('upi');
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isOrderSummaryOpen, setIsOrderSummaryOpen] = useState(true);
+
+  // COD availability checks
+  const isCodDisabled = storeSettings?.isCodEnabled === false;
+  const isCodExceeded = Boolean(storeSettings?.maxCodAmount && cartTotal > storeSettings.maxCodAmount);
+  const isCodBlocked = isCodDisabled || isCodExceeded;
+  const codBlockedReason = isCodDisabled
+    ? 'Cash on Delivery is currently disabled by store administration'
+    : `COD available for orders up to ₹${Number(storeSettings?.maxCodAmount || 0).toLocaleString('en-IN')}`;
 
   // Sync profile details if available
   useEffect(() => {
@@ -335,8 +347,6 @@ export const CheckoutScreen = ({ navigation }) => {
       return;
     }
 
-    setProcessing(true);
-
     const orderPayload = {
       items: cart.map((item) => {
         const colorName = (item.selectedColor?.name || (typeof item.selectedColor === 'string' ? item.selectedColor : '')).trim().toLowerCase();
@@ -375,8 +385,38 @@ export const CheckoutScreen = ({ navigation }) => {
       promoCode: promoCode || '',
     };
 
+    // 1. CASH ON DELIVERY FLOW
+    if (paymentMethod === 'cod') {
+      if (isCodBlocked) {
+        Alert.alert('COD Unavailable', codBlockedReason);
+        return;
+      }
+
+      setProcessing(true);
+      try {
+        const codRes = await api.post('/api/orders/cod', orderPayload);
+        if (codRes.data?.status && codRes.data?.data) {
+          handleOrderConfirmed(codRes.data.data);
+          return;
+        } else {
+          throw new Error(codRes.data?.message || 'Failed to place COD order');
+        }
+      } catch (codErr) {
+        setProcessing(false);
+        console.error('[COD Order Error]:', codErr);
+        Alert.alert(
+          'Order Placement Failed',
+          codErr.response?.data?.message || codErr.message || 'Could not place Cash on Delivery order.'
+        );
+        return;
+      }
+    }
+
+    // 2. RAZORPAY UPI ONLINE FLOW
+    setProcessing(true);
+
     try {
-      // 1. Create Razorpay Order on Backend
+      // Create Razorpay Order on Backend
       const orderRes = await api.post('/api/orders/create-razorpay-order', orderPayload);
       if (!orderRes.data?.status || !orderRes.data?.data) {
         throw new Error(orderRes.data?.message || 'Failed to initiate Razorpay order');
@@ -626,24 +666,29 @@ export const CheckoutScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* 3. Payment Method Selection Card - Exclusively UPI Apps */}
+        {/* 3. Payment Method Selection Card */}
         <View style={styles.sectionCard}>
           <View style={styles.paymentHeaderRow}>
             <Text style={styles.sectionTitle}>PAYMENT METHOD</Text>
             <View style={styles.instantBadge}>
               <Zap size={11} color={colors.gold} />
-              <Text style={styles.instantBadgeText}>INSTANT UPI</Text>
+              <Text style={styles.instantBadgeText}>SECURE CHECKOUT</Text>
             </View>
           </View>
 
-          <View style={styles.paymentMethodActive}>
+          {/* Option A: Pay via UPI */}
+          <TouchableOpacity
+            style={paymentMethod === 'upi' ? styles.paymentMethodActive : styles.paymentMethodInactive}
+            onPress={() => setPaymentMethod('upi')}
+            activeOpacity={0.8}
+          >
             <View style={styles.paymentMethodLeft}>
-              <View style={styles.radioDot}>
-                <View style={styles.radioInnerDot} />
+              <View style={[styles.radioDot, paymentMethod !== 'upi' && { borderColor: colors.border }]}>
+                {paymentMethod === 'upi' && <View style={styles.radioInnerDot} />}
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.paymentNameRow}>
-                  <Text style={styles.paymentName}>UPI Apps (Instant Checkout)</Text>
+                  <Text style={styles.paymentName}>Pay via UPI (Instant Checkout)</Text>
                   <View style={styles.recommendedPill}>
                     <Text style={styles.recommendedPillText}>FASTEST</Text>
                   </View>
@@ -654,35 +699,54 @@ export const CheckoutScreen = ({ navigation }) => {
               </View>
             </View>
             <ShieldCheck size={20} color={colors.success} />
-          </View>
+          </TouchableOpacity>
 
-          {/* Supported UPI Apps Row */}
-          {/* <View style={styles.upiAppsContainer}>
-            <Text style={styles.upiAppsHeader}>POPULAR UPI APPS SUPPORTED</Text>
-            <View style={styles.upiAppsRow}>
-              <View style={styles.upiAppBadge}>
-                <Smartphone size={13} color="#4285F4" />
-                <Text style={styles.upiAppName}>Google Pay</Text>
+          {/* Option B: Cash on Delivery */}
+          <TouchableOpacity
+            style={[
+              paymentMethod === 'cod' ? styles.paymentMethodActive : styles.paymentMethodInactive,
+              isCodBlocked && styles.paymentMethodDisabled,
+            ]}
+            onPress={() => {
+              if (!isCodBlocked) {
+                setPaymentMethod('cod');
+              } else {
+                Alert.alert('COD Unavailable', codBlockedReason);
+              }
+            }}
+            activeOpacity={isCodBlocked ? 1 : 0.8}
+          >
+            <View style={styles.paymentMethodLeft}>
+              <View style={[styles.radioDot, (paymentMethod !== 'cod' || isCodBlocked) && { borderColor: colors.border }]}>
+                {paymentMethod === 'cod' && !isCodBlocked && <View style={styles.radioInnerDot} />}
               </View>
-              <View style={styles.upiAppBadge}>
-                <Smartphone size={13} color="#5F259F" />
-                <Text style={styles.upiAppName}>PhonePe</Text>
-              </View>
-              <View style={styles.upiAppBadge}>
-                <Smartphone size={13} color="#00BAF2" />
-                <Text style={styles.upiAppName}>Paytm</Text>
-              </View>
-              <View style={styles.upiAppBadge}>
-                <QrCode size={13} color="#25D366" />
-                <Text style={styles.upiAppName}>BHIM / QR</Text>
+              <View style={{ flex: 1 }}>
+                <View style={styles.paymentNameRow}>
+                  <Text style={[styles.paymentName, isCodBlocked && { color: colors.textMuted }]}>
+                    Cash on Delivery (COD)
+                  </Text>
+                  {isCodBlocked && (
+                    <View style={styles.unavailablePill}>
+                      <Text style={styles.unavailablePillText}>UNAVAILABLE</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.paymentDesc}>
+                  {isCodBlocked
+                    ? codBlockedReason
+                    : "Pay in cash or scan delivery partner's QR at doorstep"}
+                </Text>
               </View>
             </View>
-          </View> */}
+            <Banknote size={20} color={isCodBlocked ? colors.textMuted : colors.gold} />
+          </TouchableOpacity>
 
           <View style={styles.paymentSecurityRow}>
             <Lock size={12} color={colors.textMuted} />
             <Text style={styles.paymentSecurityText}>
-              Encrypted Razorpay UPI Gateway • Zero Transaction Fee
+              {paymentMethod === 'cod'
+                ? 'Safe Doorstep Delivery • Inspect & Pay upon arrival'
+                : 'Encrypted Razorpay UPI Gateway • Zero Transaction Fee'}
             </Text>
           </View>
         </View>
@@ -803,6 +867,12 @@ export const CheckoutScreen = ({ navigation }) => {
         >
           {isProcessing ? (
             <ActivityIndicator color={colors.surface} />
+          ) : paymentMethod === 'cod' ? (
+            <>
+              <Truck size={16} color={colors.surface} />
+              <Text style={styles.payBtnText}>Confirm COD Order</Text>
+              <ArrowRight size={16} color={colors.surface} />
+            </>
           ) : (
             <>
               <Lock size={16} color={colors.surface} />
@@ -942,6 +1012,34 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.sm,
     marginVertical: spacing.xs,
+  },
+  paymentMethodInactive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  paymentMethodDisabled: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.borderLight,
+    opacity: 0.65,
+  },
+  unavailablePill: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.xs,
+  },
+  unavailablePillText: {
+    fontFamily: fonts.bold,
+    fontSize: 8,
+    color: '#991B1B',
+    letterSpacing: 0.5,
   },
   paymentMethodLeft: {
     flexDirection: 'row',
