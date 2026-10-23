@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
 } from 'react-native';
 import { CheckCircle2, Package, ArrowRight, Home, Sparkles, Truck } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
@@ -30,7 +29,7 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
   const address = order?.shippingAddress || {};
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollBody}
@@ -132,7 +131,7 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
