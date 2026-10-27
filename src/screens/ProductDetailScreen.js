@@ -110,17 +110,37 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
   const prodId = product.id || product._id;
   const saved = isWishlisted(prodId);
-  const matchingCartItem = getCartItem(prodId, selectedSize, selectedColor?.name || selectedColor);
+
+  // Match specific variant from product.variants based on selected color and size
+  const activeVariant = useMemo(() => {
+    if (!Array.isArray(product.variants) || product.variants.length === 0) return null;
+    const colorName = (selectedColor?.name || selectedColor || '').trim().toLowerCase();
+    const sizeName = (selectedSize || '').trim().toLowerCase();
+
+    return product.variants.find((v) => {
+      const vColor = (v.color || '').trim().toLowerCase();
+      const vSize = (v.size || '').trim().toLowerCase();
+      const colorMatches = !vColor || !colorName || colorName === 'standard' || vColor === colorName;
+      const sizeMatches = !vSize || !sizeName || sizeName === 'standard' || sizeName === 'one size' || vSize === sizeName;
+      return colorMatches && sizeMatches;
+    }) || product.variants[0] || null;
+  }, [product.variants, selectedColor, selectedSize]);
+
+  const activePrice = activeVariant && typeof activeVariant.price === 'number' && activeVariant.price > 0
+    ? activeVariant.price
+    : product.price;
+
+  const matchingCartItem = getCartItem(prodId, selectedSize, selectedColor?.name || selectedColor, activeVariant?._id);
   const inBagQty = matchingCartItem?.quantity || 0;
 
   const discountPercent =
-    product.originalPrice && product.originalPrice > product.price
-      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+    product.originalPrice && product.originalPrice > activePrice
+      ? Math.round(((product.originalPrice - activePrice) / product.originalPrice) * 100)
       : null;
 
   const savingsAmount =
-    product.originalPrice && product.originalPrice > product.price
-      ? product.originalPrice - product.price
+    product.originalPrice && product.originalPrice > activePrice
+      ? product.originalPrice - activePrice
       : 0;
 
   const handleShare = async () => {
@@ -135,13 +155,37 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
   const handleAddToBag = () => {
     const activeColorImage = galleryImages?.[0] || product.image;
-    addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, quantity);
+    addToCart(
+      {
+        ...product,
+        price: activePrice,
+        image: activeColorImage,
+        variantId: activeVariant?._id || activeVariant?.id || '',
+        sku: activeVariant?.sku || product.sku || '',
+      },
+      selectedSize,
+      selectedColor,
+      quantity,
+      activeVariant
+    );
   };
 
   const handleIncrement = () => {
     const activeColorImage = galleryImages?.[0] || product.image;
     if (!matchingCartItem) {
-      addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, 1);
+      addToCart(
+        {
+          ...product,
+          price: activePrice,
+          image: activeColorImage,
+          variantId: activeVariant?._id || activeVariant?.id || '',
+          sku: activeVariant?.sku || product.sku || '',
+        },
+        selectedSize,
+        selectedColor,
+        1,
+        activeVariant
+      );
       return;
     }
     const targetId = matchingCartItem.cartItemId || matchingCartItem.id;
@@ -161,7 +205,19 @@ export const ProductDetailScreen = ({ route, navigation }) => {
   const handleBuyNow = () => {
     const activeColorImage = galleryImages?.[0] || product.image;
     if (inBagQty === 0) {
-      addToCart({ ...product, image: activeColorImage }, selectedSize, selectedColor, quantity);
+      addToCart(
+        {
+          ...product,
+          price: activePrice,
+          image: activeColorImage,
+          variantId: activeVariant?._id || activeVariant?.id || '',
+          sku: activeVariant?.sku || product.sku || '',
+        },
+        selectedSize,
+        selectedColor,
+        quantity,
+        activeVariant
+      );
     }
     navigation.navigate('Checkout');
   };

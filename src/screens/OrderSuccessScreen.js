@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -84,6 +85,69 @@ export const OrderSuccessScreen = ({ route, navigation }) => {
             <Text style={styles.detailLabel}>Estimated Delivery</Text>
             <Text style={styles.detailValue}>3-5 Business Days</Text>
           </View>
+
+          {Array.isArray(order?.items) && order.items.length > 0 && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.itemsSection}>
+                <Text style={styles.itemsSectionTitle}>ORDERED PIECES ({order.items.length})</Text>
+                {order.items.map((it, idx) => {
+                  const colorName = typeof it.selectedColor === 'object' ? it.selectedColor?.name : (it.selectedColor || it.color);
+                  const colorHex = typeof it.selectedColor === 'object' ? it.selectedColor?.hex : '#1D241C';
+                  const colorKey = (colorName || '').trim().toLowerCase();
+
+                  let matchedColorImg = '';
+                  if (colorKey && Array.isArray(it.product?.colorImages) && it.product.colorImages.length > 0) {
+                    const match = it.product.colorImages.find(
+                      (ci) => (ci.color || '').trim().toLowerCase() === colorKey
+                    );
+                    if (match && Array.isArray(match.images) && match.images.length > 0) {
+                      matchedColorImg = match.images[0];
+                    }
+                  }
+                  const itemImg = matchedColorImg || it.image || it.product?.image || (Array.isArray(it.product?.images) && it.product.images[0]) || '';
+                  const itemSku = it.sku || it.product?.sku;
+                  const unitPrice = Number(it.price !== undefined ? it.price : (it.product?.price || 0));
+
+                  return (
+                    <View key={it.id || it._id || idx} style={styles.orderSuccessItemRow}>
+                      {itemImg ? (
+                        <Image
+                          source={{ uri: itemImg }}
+                          style={styles.orderSuccessItemThumb}
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                      <View style={{ flex: 1, marginRight: spacing.sm }}>
+                        <Text style={styles.orderSuccessItemName} numberOfLines={1}>
+                          {it.quantity}× {it.name || it.product?.name || 'Garment Piece'}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                          {itemSku ? (
+                            <View style={styles.orderSuccessSkuBadge}>
+                              <Text style={styles.orderSuccessSkuText}>SKU: {itemSku}</Text>
+                            </View>
+                          ) : null}
+                          {colorName ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                              <View style={[styles.orderSuccessColorDot, { backgroundColor: colorHex }]} />
+                              <Text style={styles.orderSuccessItemMeta}>{colorName}</Text>
+                            </View>
+                          ) : null}
+                          {it.selectedSize || it.size ? (
+                            <Text style={styles.orderSuccessItemMeta}>• Size: {it.selectedSize || it.size}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <Text style={styles.orderSuccessItemPrice}>
+                        ₹{(unitPrice * (it.quantity || 1)).toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
 
           <View style={styles.divider} />
 
@@ -251,6 +315,64 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.borderLight,
     marginVertical: spacing.md,
+  },
+  itemsSection: {
+    marginTop: 2,
+  },
+  itemsSectionTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: colors.textPrimary,
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
+  },
+  orderSuccessItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  orderSuccessItemThumb: {
+    width: 36,
+    height: 44,
+    borderRadius: radius.xs,
+    marginRight: spacing.sm,
+    backgroundColor: colors.surfaceAlt,
+  },
+  orderSuccessItemName: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  orderSuccessSkuBadge: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  orderSuccessSkuText: {
+    fontFamily: fonts.regular,
+    fontSize: 9,
+    color: colors.textSecondary,
+  },
+  orderSuccessColorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+  },
+  orderSuccessItemMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  orderSuccessItemPrice: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textPrimary,
   },
   addressSection: {
     marginTop: 2,

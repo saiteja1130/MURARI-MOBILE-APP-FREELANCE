@@ -302,11 +302,24 @@ export const AccountScreen = ({ navigation }) => {
 
                   {/* Order Items */}
                   {(ord.items || []).map((it, idx) => {
-                    const itemImg = it.image || it.product?.image || (Array.isArray(it.product?.images) && it.product.images[0]) || '';
                     const colorName = typeof it.selectedColor === 'object' ? it.selectedColor?.name : (it.selectedColor || it.color);
+                    const colorHex = typeof it.selectedColor === 'object' ? it.selectedColor?.hex : '#1D241C';
+                    const colorKey = (colorName || '').trim().toLowerCase();
+
+                    let matchedColorImage = '';
+                    if (colorKey && Array.isArray(it.product?.colorImages) && it.product.colorImages.length > 0) {
+                      const match = it.product.colorImages.find(
+                        (ci) => (ci.color || '').trim().toLowerCase() === colorKey
+                      );
+                      if (match && Array.isArray(match.images) && match.images.length > 0) {
+                        matchedColorImage = match.images[0];
+                      }
+                    }
+                    const itemImg = matchedColorImage || it.image || it.product?.image || (Array.isArray(it.product?.images) && it.product.images[0]) || '';
+                    const itemSku = it.sku || it.product?.sku;
 
                     return (
-                      <View key={idx} style={styles.orderItemRow}>
+                      <View key={it.id || idx} style={styles.orderItemRow}>
                         {itemImg ? (
                           <Image
                             source={{ uri: itemImg }}
@@ -318,11 +331,22 @@ export const AccountScreen = ({ navigation }) => {
                           <Text style={styles.orderItemName} numberOfLines={1}>
                             {it.quantity}× {it.name}
                           </Text>
-                          {colorName ? (
-                            <Text style={styles.orderItemMeta}>
-                              Color: {colorName} {it.selectedSize ? `• Size: ${it.selectedSize}` : ''}
-                            </Text>
-                          ) : null}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                            {itemSku ? (
+                              <View style={styles.orderSkuBadge}>
+                                <Text style={styles.orderSkuText}>SKU: {itemSku}</Text>
+                              </View>
+                            ) : null}
+                            {colorName ? (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                                <View style={[styles.orderColorDot, { backgroundColor: colorHex }]} />
+                                <Text style={styles.orderItemMeta}>{colorName}</Text>
+                              </View>
+                            ) : null}
+                            {it.selectedSize || it.size ? (
+                              <Text style={styles.orderItemMeta}>• Size: {it.selectedSize || it.size}</Text>
+                            ) : null}
+                          </View>
                         </View>
                         <Text style={styles.orderItemPrice}>
                           ₹{(it.price * it.quantity).toLocaleString('en-IN')}
@@ -876,7 +900,26 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 10,
     color: colors.textMuted,
-    marginTop: 2,
+  },
+  orderSkuBadge: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: radius.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  orderSkuText: {
+    fontFamily: fonts.regular,
+    fontSize: 9,
+    color: colors.textSecondary,
+  },
+  orderColorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    borderWidth: 0.5,
+    borderColor: colors.border,
   },
   orderItemPrice: {
     fontFamily: fonts.semiBold,

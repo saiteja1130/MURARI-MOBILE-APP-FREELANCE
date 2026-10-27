@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,13 +32,22 @@ export const Header = ({
   searchPlaceholder = 'Search sarees, lehengas, kurtis...',
   onFilterPress,
   showPromoBanner = false,
+  promoBannerData,
   showRightActions = true,
   showWishlistAction = true,
   showCartAction = true,
   showAccountAction = true,
 }) => {
   const navigation = useNavigation();
-  const { openSearch, cartItemCount, wishlist } = useStore();
+  const {
+    openSearch,
+    cartItemCount,
+    wishlist,
+    storeSettings,
+    latestCoupon,
+    applyPromoCode,
+    showToast,
+  } = useStore();
   const { currentUser } = useAuth();
 
   const handleBack = () => {
@@ -80,6 +89,70 @@ export const Header = ({
       }
     }
   };
+
+  // Dynamic Latest Coupon Resolution
+  const activeCoupon = useMemo(() => {
+    if (promoBannerData) return promoBannerData;
+    if (latestCoupon && latestCoupon.isActive !== false && latestCoupon.code) {
+      return latestCoupon;
+    }
+    if (storeSettings?.latestCoupon && storeSettings.latestCoupon.isActive !== false && storeSettings.latestCoupon.code) {
+      return storeSettings.latestCoupon;
+    }
+    if (storeSettings?.isPromoActive && storeSettings?.promoCode) {
+      return {
+        code: storeSettings.promoCode,
+        discountType: 'percentage',
+        discountValue: storeSettings.discountPercent || 15,
+        minSpend: storeSettings.freeShippingThreshold || 0,
+        isActive: true,
+      };
+    }
+    return null;
+  }, [promoBannerData, latestCoupon, storeSettings]);
+
+  const discountLabel = useMemo(() => {
+    if (!activeCoupon) return '';
+    if (activeCoupon.discountType === 'fixed') {
+      return `Flat ₹${activeCoupon.discountValue} OFF`;
+    }
+    if (activeCoupon.discountType === 'free_shipping') {
+      return 'Free Shipping';
+    }
+    const pct = activeCoupon.discountValue || storeSettings?.discountPercent || 15;
+    return `Extra ${pct}% OFF`;
+  }, [activeCoupon, storeSettings?.discountPercent]);
+
+  const freeShippingThreshold = activeCoupon?.minSpend || storeSettings?.freeShippingThreshold;
+  const shippingLabel = freeShippingThreshold ? ` • Free Shipping ₹${freeShippingThreshold}+` : '';
+
+  const handlePressCoupon = useCallback(async () => {
+    if (!activeCoupon?.code) return;
+    try {
+      if (applyPromoCode) {
+        const res = await applyPromoCode(activeCoupon.code);
+        if (res?.success) {
+          showToast?.({
+            type: 'cart',
+            title: 'Coupon Applied!',
+            message: res.message || `Code ${activeCoupon.code} applied!`,
+          });
+          return;
+        }
+      }
+      showToast?.({
+        type: 'info',
+        title: 'Coupon Code',
+        message: `Use code ${activeCoupon.code} at checkout.`,
+      });
+    } catch (e) {
+      showToast?.({
+        type: 'info',
+        title: 'Coupon Code',
+        message: `Use code ${activeCoupon.code} at checkout.`,
+      });
+    }
+  }, [activeCoupon, applyPromoCode, showToast]);
 
   // Only show the brand logo when explicitly set to true OR on Home screen (no title and no back button)
   const shouldShowLogo = showLogo !== undefined ? showLogo : (!title && !showBack);
@@ -210,15 +283,20 @@ export const Header = ({
         </View>
       )}
 
-      {/* Optional Top Announcement Strip */}
-      {showPromoBanner && (
-        <View style={styles.announcementStrip}>
+      {/* Dynamic Top Announcement Strip */}
+      {showPromoBanner && activeCoupon && (
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handlePressCoupon}
+          style={styles.announcementStrip}
+        >
           <Sparkles size={12} color={colors.gold} />
-          <Text style={styles.announcementText}>
-            Extra 15% OFF with code{' '}
-            <Text style={styles.announcementCode}>SUMI15</Text> • Free Shipping ₹200+
+          <Text style={styles.announcementText} numberOfLines={1}>
+            {discountLabel} with code{' '}
+            <Text style={styles.announcementCode}>{activeCoupon.code}</Text>
+            {shippingLabel}
           </Text>
-        </View>
+        </TouchableOpacity>
       )}
     </View>
   );

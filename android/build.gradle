@@ -6,10 +6,10 @@ buildscript {
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.2.0"
-        versionCode = 3
-        versionName = "1.1.1"
-        appVersion = "1.1.1"
-        buildNumber = 3
+        versionCode = 4
+        versionName = "1.1.2"
+        appVersion = "1.1.2"
+        buildNumber = 4
     }
     repositories {
         google()

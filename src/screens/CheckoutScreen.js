@@ -363,10 +363,13 @@ export const CheckoutScreen = ({ navigation }) => {
 
         return {
           id: item.product?._id || item.product?.id || item.id,
+          product: item.product?._id || item.product?.id || item.id,
           quantity: item.quantity,
           selectedSize: item.selectedSize || 'Standard',
           selectedColor: item.selectedColor || { name: 'Standard', hex: '#1D241C' },
-          price: item.product?.price,
+          variantId: item.variantId || '',
+          sku: item.sku || item.product?.sku || '',
+          price: Number(item.product?.price) || 0,
           name: item.product?.name,
           image: itemFinalImage,
         };
@@ -786,6 +789,8 @@ export const CheckoutScreen = ({ navigation }) => {
                 const itThumb = matchedColorImage || it.image || it.product?.image || (Array.isArray(it.product?.galleryImages) && it.product.galleryImages[0]) || '';
                 const itColorLabel = typeof it.selectedColor === 'object' ? it.selectedColor?.name : (it.selectedColor || 'Standard');
                 const itColorHex = typeof it.selectedColor === 'object' ? it.selectedColor?.hex : '#1D241C';
+                const itSku = it.sku || it.product?.sku;
+                const itUnitPrice = Number(it.price !== undefined ? it.price : (it.product?.price || 0));
 
                 return (
                   <View key={it.cartItemId || it.id} style={styles.summaryItemRow}>
@@ -801,6 +806,11 @@ export const CheckoutScreen = ({ navigation }) => {
                         {it.quantity}× {it.product?.name}
                       </Text>
                       <View style={styles.summaryItemMetaRow}>
+                        {itSku ? (
+                          <Text style={[styles.summaryItemMeta, { fontFamily: fonts.medium, color: colors.textSecondary }]}>
+                            [{itSku}]
+                          </Text>
+                        ) : null}
                         <View style={[styles.summaryColorDot, { backgroundColor: itColorHex }]} />
                         <Text style={styles.summaryItemMeta}>
                           {itColorLabel} • Size: {it.selectedSize}
@@ -808,7 +818,7 @@ export const CheckoutScreen = ({ navigation }) => {
                       </View>
                     </View>
                     <Text style={styles.summaryItemPrice}>
-                      ₹{((it.product?.price || 0) * it.quantity).toLocaleString('en-IN')}
+                      ₹{(itUnitPrice * it.quantity).toLocaleString('en-IN')}
                     </Text>
                   </View>
                 );

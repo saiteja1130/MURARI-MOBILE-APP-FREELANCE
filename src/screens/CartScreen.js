@@ -201,10 +201,28 @@ export const CartScreen = ({ navigation }) => {
 
                   {/* Size & Color Tags */}
                   <View style={styles.attributesRow}>
+                    {item.sku ? (
+                      <View style={styles.attrPill}>
+                        <Text style={styles.attrText}>SKU: {item.sku}</Text>
+                      </View>
+                    ) : null}
                     <View style={styles.attrPill}>
                       <Text style={styles.attrText}>Size: {item.selectedSize || 'Standard'}</Text>
                     </View>
                     <View style={styles.attrPill}>
+                      {item.selectedColor?.hex ? (
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: item.selectedColor.hex,
+                            marginRight: 4,
+                            borderWidth: 0.5,
+                            borderColor: colors.border,
+                          }}
+                        />
+                      ) : null}
                       <Text style={styles.attrText}>
                         Color: {item.selectedColor?.name || item.selectedColor || 'Standard'}
                       </Text>
@@ -501,6 +519,8 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   attrPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.background,
     paddingHorizontal: 6,
     paddingVertical: 2,

@@ -24,7 +24,10 @@ const mapServerCartItems = (rawItems) => {
     return {
       id: item.id || item.cartItemId || item._id,
       cartItemId: item.cartItemId || item.id || item._id,
+      variantId: item.variantId || '',
+      sku: item.sku || normProduct.sku || '',
       product: { ...normProduct, image: finalImage },
+      price: Number(item.price !== undefined ? item.price : (normProduct.price || 0)),
       image: finalImage,
       quantity: Number(item.quantity) || 1,
       selectedSize: item.selectedSize || 'Standard',
@@ -41,7 +44,7 @@ export const CartProvider = ({ children }) => {
   const [promoCode, setPromoCode] = useState('');
   const [discountRate, setDiscountRate] = useState(0);
 
-  // Dynamic Store Settings from Backend
+  // Dynamic Store Settings & Latest Coupon from Backend
   const [storeSettings, setStoreSettings] = useState({
     shippingFee: 30,
     freeShippingThreshold: 5000,
@@ -49,21 +52,37 @@ export const CartProvider = ({ children }) => {
     discountPercent: 15,
     isPromoActive: true,
   });
+  const [latestCoupon, setLatestCoupon] = useState(null);
 
   const fetchStoreSettings = useCallback(async () => {
     try {
       const response = await api.get('/api/settings');
       if (response.data?.status && response.data?.data) {
         setStoreSettings(response.data.data);
+        if (response.data.data.latestCoupon) {
+          setLatestCoupon(response.data.data.latestCoupon);
+        }
       }
     } catch (error) {
       console.warn('Failed to load store settings:', error.message);
     }
   }, []);
 
+  const fetchLatestCoupon = useCallback(async () => {
+    try {
+      const response = await api.get('/api/coupons/latest');
+      if (response.data?.status && response.data?.data) {
+        setLatestCoupon(response.data.data);
+      }
+    } catch (error) {
+      // Graceful fallback to storeSettings promo
+    }
+  }, []);
+
   useEffect(() => {
     fetchStoreSettings();
-  }, [fetchStoreSettings]);
+    fetchLatestCoupon();
+  }, [fetchStoreSettings, fetchLatestCoupon]);
 
   const cartRef = useRef(cart);
   useEffect(() => {
@@ -99,12 +118,12 @@ export const CartProvider = ({ children }) => {
 
   // Add Item to Cart
   const addToCart = useCallback(
-    async (product, arg2, arg3, arg4) => {
+    async (product, arg2, arg3, arg4, arg5) => {
       if (!product) return;
 
       if (!token || !isAuthenticated) {
         requireAuth(
-          () => addToCart(product, arg2, arg3, arg4),
+          () => addToCart(product, arg2, arg3, arg4, arg5),
           {
             title: 'Sign In to Add to Bag',
             message: 'Please sign in or create an account to add items to your shopping bag.',
@@ -116,30 +135,80 @@ export const CartProvider = ({ children }) => {
       let quantity = 1;
       let selectedSize = 'Standard';
       let selectedColor = { name: 'Standard', hex: '#1D241C' };
+      let variantId = '';
+      let sku = '';
 
-      if (typeof arg2 === 'number') {
+      // Pattern 1: Options object: addToCart(product, { size, color, quantity, variantId, sku })
+      if (arg2 && typeof arg2 === 'object' && !Array.isArray(arg2) && !arg2.hex && !arg2.name) {
+        quantity = Number(arg2.quantity) || 1;
+        selectedSize = arg2.selectedSize || arg2.size || 'Standard';
+        selectedColor = arg2.selectedColor || arg2.color || { name: 'Standard', hex: '#1D241C' };
+        variantId = arg2.variantId || arg2.variant?._id || arg2.variant?.id || '';
+        sku = arg2.sku || arg2.variant?.sku || '';
+      }
+      // Pattern 2: (product, quantity, size, color, variant)
+      else if (typeof arg2 === 'number') {
         quantity = arg2 > 0 ? arg2 : 1;
         if (typeof arg3 === 'string' && arg3) selectedSize = arg3;
-        if (arg4 && typeof arg4 === 'object' && !Array.isArray(arg4)) selectedColor = arg4;
-      } else if (typeof arg2 === 'string') {
-        selectedSize = arg2 || 'Standard';
-        if (arg3 && typeof arg3 === 'object' && !Array.isArray(arg3)) selectedColor = arg3;
-        if (typeof arg4 === 'number' && arg4 > 0) quantity = arg4;
-      } else if (arg2 && typeof arg2 === 'object' && !Array.isArray(arg2)) {
-        if (arg2.hex) {
-          selectedColor = arg2;
-          if (typeof arg3 === 'string' && arg3) selectedSize = arg3;
-          if (typeof arg4 === 'number' && arg4 > 0) quantity = arg4;
-        } else {
-          if (arg2.quantity) quantity = Number(arg2.quantity) || 1;
-          if (arg2.selectedSize || arg2.size) selectedSize = arg2.selectedSize || arg2.size;
-          if (arg2.selectedColor || arg2.color) selectedColor = arg2.selectedColor || arg2.color;
+        if (arg4 && typeof arg4 === 'object') selectedColor = arg4;
+        if (arg5 && typeof arg5 === 'object') {
+          variantId = arg5.variantId || arg5._id || arg5.id || '';
+          sku = arg5.sku || '';
+        } else if (typeof arg5 === 'string') {
+          variantId = arg5;
         }
       }
+      // Pattern 3: (product, size, color, quantity, variant)
+      else if (typeof arg2 === 'string') {
+        selectedSize = arg2 || 'Standard';
+        if (arg3 && typeof arg3 === 'object') selectedColor = arg3;
+        else if (typeof arg3 === 'string') selectedColor = { name: arg3, hex: '#1D241C' };
+        if (typeof arg4 === 'number' && arg4 > 0) quantity = arg4;
+        if (arg5 && typeof arg5 === 'object') {
+          variantId = arg5.variantId || arg5._id || arg5.id || '';
+          sku = arg5.sku || '';
+        } else if (typeof arg5 === 'string') {
+          variantId = arg5;
+        }
+      }
+      // Pattern 4: (product, colorObject, size, quantity, variant)
+      else if (arg2 && typeof arg2 === 'object' && (arg2.hex || arg2.name)) {
+        selectedColor = arg2;
+        if (typeof arg3 === 'string' && arg3) selectedSize = arg3;
+        if (typeof arg4 === 'number' && arg4 > 0) quantity = arg4;
+        if (arg5 && typeof arg5 === 'object') {
+          variantId = arg5.variantId || arg5._id || arg5.id || '';
+          sku = arg5.sku || '';
+        } else if (typeof arg5 === 'string') {
+          variantId = arg5;
+        }
+      }
+
+      // Check if product object itself carried variant info
+      if (!variantId && product.variantId) variantId = product.variantId;
+      if (!variantId && product.selectedVariant?._id) variantId = product.selectedVariant._id;
+      if (!sku && product.selectedVariant?.sku) sku = product.selectedVariant.sku;
 
       const finalColor = typeof selectedColor === 'string'
         ? { name: selectedColor, hex: '#1D241C' }
         : (selectedColor || { name: 'Standard', hex: '#1D241C' });
+
+      // Automatically resolve matching variant if product.variants is present
+      if (!variantId && Array.isArray(product.variants) && product.variants.length > 0) {
+        const targetColorName = (finalColor.name || '').trim().toLowerCase();
+        const targetSize = (selectedSize || '').trim().toLowerCase();
+        const matched = product.variants.find((v) => {
+          const vColor = (v.color || '').trim().toLowerCase();
+          const vSize = (v.size || '').trim().toLowerCase();
+          const colorMatches = !vColor || !targetColorName || targetColorName === 'standard' || vColor === targetColorName;
+          const sizeMatches = !vSize || !targetSize || targetSize === 'standard' || targetSize === 'one size' || vSize === targetSize;
+          return colorMatches && sizeMatches;
+        });
+        if (matched) {
+          variantId = (matched._id || matched.id || '').toString();
+          if (!sku) sku = matched.sku || '';
+        }
+      }
 
       // Resolve color image for optimistic cart
       const colorName = (finalColor.name || '').trim().toLowerCase();
@@ -153,32 +222,58 @@ export const CartProvider = ({ children }) => {
         }
       }
       const itemImage = matchedColorImage || product.image || (Array.isArray(product.images) && product.images[0]) || (Array.isArray(product.galleryImages) && product.galleryImages[0]) || '';
-      const productWithColorImage = { ...product, image: itemImage };
+      let variantPrice = Number(product.price) || 0;
+      if (variantId && Array.isArray(product.variants)) {
+        const foundV = product.variants.find((v) => (v._id || v.id || '').toString() === variantId.toString() || (sku && v.sku === sku));
+        if (foundV && typeof foundV.price === 'number' && foundV.price > 0) {
+          variantPrice = foundV.price;
+        }
+      }
+      const productWithColorImage = { ...product, price: variantPrice, image: itemImage };
 
       const prodId = product.id || product._id;
+      const expectedCartItemId = variantId
+        ? `${prodId}-${variantId}`
+        : (sku && sku !== product.sku
+            ? `${prodId}-${sku}`
+            : `${prodId}-${selectedSize}-${finalColor.name || 'Standard'}`);
+
       const currentCart = [...cartRef.current];
 
-      const existingItemIndex = currentCart.findIndex(
-        (item) =>
-          (item.product?.id === prodId || item.product?._id === prodId) &&
+      const existingItemIndex = currentCart.findIndex((item) => {
+        const itemProdId = item.product?.id || item.product?._id;
+        if (itemProdId !== prodId) return false;
+        if (variantId && item.variantId) return item.variantId.toString() === variantId.toString();
+        if (sku && item.sku && sku !== product.sku) return item.sku === sku;
+        return (
           item.selectedSize === selectedSize &&
           (item.selectedColor?.name === finalColor.name || item.selectedColor === finalColor.name)
-      );
+        );
+      });
 
       let updatedCart;
       if (existingItemIndex > -1) {
         updatedCart = currentCart.map((item, idx) =>
           idx === existingItemIndex
-            ? { ...item, quantity: item.quantity + (Number(quantity) || 1), image: item.image || itemImage }
+            ? {
+                ...item,
+                quantity: item.quantity + (Number(quantity) || 1),
+                image: item.image || itemImage,
+                variantId: item.variantId || variantId,
+                sku: item.sku || sku,
+              }
             : item
         );
       } else {
         updatedCart = [
           ...currentCart,
           {
-            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            cartItemId: `temp-${Date.now()}`,
+            id: expectedCartItemId,
+            cartItemId: expectedCartItemId,
+            variantId,
+            sku,
             product: productWithColorImage,
+            price: variantPrice,
             image: itemImage,
             quantity: Number(quantity) || 1,
             selectedSize,
@@ -196,6 +291,8 @@ export const CartProvider = ({ children }) => {
             quantity: Number(quantity) || 1,
             selectedSize,
             selectedColor: finalColor,
+            variantId,
+            sku,
           });
 
           if (response.data?.status && response.data?.data) {
@@ -203,7 +300,7 @@ export const CartProvider = ({ children }) => {
             setCart(serverItems);
           }
         } catch (err) {
-          console.warn('Background cart sync warning:', err.message);
+          console.warn('Background cart sync warning (keeping local cart):', err.message);
         }
       }
     },
@@ -328,7 +425,8 @@ export const CartProvider = ({ children }) => {
     () =>
       cart.reduce((acc, i) => {
         if (i.product?.isStockAvailable === false) return acc;
-        return acc + (Number(i.product?.price) || 0) * i.quantity;
+        const itPrice = Number(i.price !== undefined ? i.price : (i.product?.price || 0));
+        return acc + itPrice * i.quantity;
       }, 0),
     [cart]
   );
@@ -350,89 +448,131 @@ export const CartProvider = ({ children }) => {
     [cartSubtotal, discountAmount, shippingCost]
   );
 
+  const cartProductMap = useMemo(() => {
+    const map = new Map();
+    for (let i = 0; i < cart.length; i++) {
+      const item = cart[i];
+      const prodId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
+      if (!prodId) continue;
+      if (!map.has(prodId)) {
+        map.set(prodId, { items: [], totalQty: 0 });
+      }
+      const entry = map.get(prodId);
+      entry.items.push(item);
+      entry.totalQty += Number(item.quantity) || 1;
+    }
+    return map;
+  }, [cart]);
+
   const isInCart = useCallback(
     (productId) => {
       if (!productId) return false;
       const stringId = (productId?.id || productId?._id || productId).toString();
-      return cart.some((item) => {
-        const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
-        return itemProdId === stringId;
-      });
+      return cartProductMap.has(stringId);
     },
-    [cart]
+    [cartProductMap]
   );
 
   const getCartItemQuantity = useCallback(
     (productId) => {
       if (!productId) return 0;
       const stringId = (productId?.id || productId?._id || productId).toString();
-      const matchingItems = cart.filter((item) => {
-        const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
-        return itemProdId === stringId;
-      });
-      return matchingItems.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0);
+      const entry = cartProductMap.get(stringId);
+      return entry ? entry.totalQty : 0;
     },
-    [cart]
+    [cartProductMap]
   );
 
   const getCartItem = useCallback(
-    (productId, selectedSize, selectedColor) => {
+    (productId, selectedSize, selectedColor, variantId) => {
       if (!productId) return null;
       const stringId = (productId?.id || productId?._id || productId).toString();
+      const entry = cartProductMap.get(stringId);
+      if (!entry || entry.items.length === 0) return null;
+
       const colorName = typeof selectedColor === 'object' ? selectedColor?.name : selectedColor;
 
-      if (selectedSize || colorName) {
-        const exactMatch = cart.find((item) => {
-          const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
-          if (itemProdId !== stringId) return false;
+      if (variantId || selectedSize || colorName) {
+        const exactMatch = entry.items.find((item) => {
+          if (variantId && item.variantId && item.variantId.toString() !== variantId.toString()) return false;
           if (selectedSize && item.selectedSize !== selectedSize) return false;
           if (colorName) {
             const itemColor = typeof item.selectedColor === 'object' ? item.selectedColor?.name : item.selectedColor;
-            if (itemColor !== colorName) return false;
+            if (itemColor && colorName && itemColor.toLowerCase() !== colorName.toLowerCase()) return false;
           }
           return true;
         });
         if (exactMatch) return exactMatch;
       }
 
-      return cart.find((item) => {
-        const itemProdId = (item.product?.id || item.product?._id || item.id)?.toString?.() || '';
-        return itemProdId === stringId;
-      }) || null;
+      return entry.items[0] || null;
     },
-    [cart]
+    [cartProductMap]
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      cart,
+      isLoadingCart,
+      cartSubtotal,
+      cartItemCount,
+      discountRate,
+      discountAmount,
+      shippingCost,
+      shippingFee: baseShippingFee,
+      freeShippingThreshold,
+      cartTotal,
+      promoCode,
+      hasOutOfStockItems,
+      outOfStockItems,
+      storeSettings,
+      latestCoupon,
+      refreshSettings: fetchStoreSettings,
+      refreshLatestCoupon: fetchLatestCoupon,
+      addToCart,
+      updateCartQuantity,
+      removeCartItem,
+      clearCart,
+      applyPromoCode,
+      removePromoCode,
+      refreshCart: fetchBackendCart,
+      isInCart,
+      getCartItemQuantity,
+      getCartItem,
+    }),
+    [
+      cart,
+      isLoadingCart,
+      cartSubtotal,
+      cartItemCount,
+      discountRate,
+      discountAmount,
+      shippingCost,
+      baseShippingFee,
+      freeShippingThreshold,
+      cartTotal,
+      promoCode,
+      hasOutOfStockItems,
+      outOfStockItems,
+      storeSettings,
+      latestCoupon,
+      fetchStoreSettings,
+      fetchLatestCoupon,
+      addToCart,
+      updateCartQuantity,
+      removeCartItem,
+      clearCart,
+      applyPromoCode,
+      removePromoCode,
+      fetchBackendCart,
+      isInCart,
+      getCartItemQuantity,
+      getCartItem,
+    ]
   );
 
   return (
-    <CartContext.Provider
-      value={{
-        cart,
-        isLoadingCart,
-        cartSubtotal,
-        cartItemCount,
-        discountRate,
-        discountAmount,
-        shippingCost,
-        shippingFee: baseShippingFee,
-        freeShippingThreshold,
-        cartTotal,
-        promoCode,
-        hasOutOfStockItems,
-        outOfStockItems,
-        storeSettings,
-        refreshSettings: fetchStoreSettings,
-        addToCart,
-        updateCartQuantity,
-        removeCartItem,
-        clearCart,
-        applyPromoCode,
-        removePromoCode,
-        refreshCart: fetchBackendCart,
-        isInCart,
-        getCartItemQuantity,
-        getCartItem,
-      }}
-    >
+    <CartContext.Provider value={contextValue}>
       {children}
     </CartContext.Provider>
   );

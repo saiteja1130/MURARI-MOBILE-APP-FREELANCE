@@ -1,13 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
+  FlatList,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
   Image,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Sparkles, ArrowRight, Flame, ChevronRight } from 'lucide-react-native';
 import { colors, fonts, spacing, radius, shadows } from '../utils/theme';
@@ -23,27 +25,29 @@ const { width } = Dimensions.get('window');
 export const HomeScreen = ({ navigation }) => {
   const {
     products,
-    mainCategories,
     categories,
-    isLoadingProducts,
     refreshProducts,
     refreshCategories,
     refreshMainCategories,
+    refreshSettings,
+    refreshLatestCoupon,
   } = useStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedDepartment, setSelectedDepartment] = useState('All');
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
       refreshProducts(),
       refreshCategories(),
       refreshMainCategories(),
+      refreshSettings ? refreshSettings() : Promise.resolve(),
+      refreshLatestCoupon ? refreshLatestCoupon() : Promise.resolve(),
     ]);
     setRefreshing(false);
-  };
+  }, [refreshProducts, refreshCategories, refreshMainCategories, refreshSettings, refreshLatestCoupon]);
 
   // Trending Deals / Flash items (products on sale or with high rating)
   const trendingDeals = useMemo(() => {
@@ -88,37 +92,54 @@ export const HomeScreen = ({ navigation }) => {
     return ['All', 'Sarees', 'Kurtas', 'Lehengas', 'Jewellery', 'Festive Wear'];
   }, [categories]);
 
-  return (
-    <View style={styles.container}>
-      {/* Dynamic Mobile E-Commerce Header */}
-      <Header
-        showSearchPill={true}
-        showPromoBanner={true}
-        searchPlaceholder="Search 500+ handcrafted ethnic styles..."
-      />
+  const handleSelectCategoryBubble = useCallback(
+    (slug) => {
+      setSelectedCategory(slug);
+      if (slug !== 'All') {
+        navigation.navigate('ShopTab', { selectedCategory: slug });
+      }
+    },
+    [navigation]
+  );
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />
-        }
-        contentContainerStyle={styles.scrollBody}
-      >
+  const handleSeeAllSale = useCallback(() => {
+    navigation.navigate('ShopTab', { filter: 'sale' });
+  }, [navigation]);
+
+  const handleLookbookPress = useCallback(() => {
+    navigation.navigate('ShopTab', { selectedCategory: 'Sarees' });
+  }, [navigation]);
+
+  const keyExtractor = useCallback((item, index) => {
+    return (item.id || item._id || `product-${index}`).toString();
+  }, []);
+
+  const renderProductCard = useCallback(({ item }) => {
+    return <ProductCard product={item} />;
+  }, []);
+
+  const renderFlashDeal = useCallback(({ item }) => {
+    return <ProductCard product={item} style={styles.horizontalCard} />;
+  }, []);
+
+  const flashKeyExtractor = useCallback((item, index) => {
+    return `flash-${item.id || item._id || index}`;
+  }, []);
+
+  // Memoized Header Content above the virtualized product grid
+  const ListHeader = useMemo(() => {
+    return (
+      <View>
         {/* 1. Category Story Bubbles */}
         <CategoryStoryBubbles
           selectedCategory={selectedCategory}
-          onSelectCategory={(slug) => {
-            setSelectedCategory(slug);
-            if (slug !== 'All') {
-              navigation.navigate('ShopTab', { selectedCategory: slug });
-            }
-          }}
+          onSelectCategory={handleSelectCategoryBubble}
         />
 
         {/* 2. Hero Campaign Banners */}
         <HeroBannerCarousel />
 
-        {/* 3. Flash Sale / Trending Section */}
+        {/* 3. Flash Sale / Trending Section (Virtualized horizontal FlatList) */}
         {trendingDeals.length > 0 && (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeader}>
@@ -127,7 +148,7 @@ export const HomeScreen = ({ navigation }) => {
                 <Text style={styles.sectionTitle}>FLASH SALE &amp; TRENDING</Text>
               </View>
               <TouchableOpacity
-                onPress={() => navigation.navigate('ShopTab', { filter: 'sale' })}
+                onPress={handleSeeAllSale}
                 style={styles.seeAllBtn}
               >
                 <Text style={styles.seeAllText}>See All</Text>
@@ -135,19 +156,17 @@ export const HomeScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView
+            <FlatList
               horizontal
+              data={trendingDeals}
+              keyExtractor={flashKeyExtractor}
+              renderItem={renderFlashDeal}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.horizontalScroll}
-            >
-              {trendingDeals.map((item) => (
-                <ProductCard
-                  key={item.id}
-                  product={item}
-                  style={styles.horizontalCard}
-                />
-              ))}
-            </ScrollView>
+              initialNumToRender={3}
+              maxToRenderPerBatch={3}
+              windowSize={3}
+            />
           </View>
         )}
 
@@ -186,14 +205,15 @@ export const HomeScreen = ({ navigation }) => {
           <TouchableOpacity
             style={styles.spotlightCard}
             activeOpacity={0.9}
-            onPress={() => navigation.navigate('ShopTab', { selectedCategory: 'Sarees' })}
+            onPress={handleLookbookPress}
           >
             <Image
               source={{
-                uri: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=1200',
+                uri: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?q=80&w=800',
               }}
               style={styles.spotlightImage}
               resizeMode="cover"
+              fadeDuration={0}
             />
             <View style={styles.spotlightOverlay} />
             <View style={styles.spotlightContent}>
@@ -213,25 +233,55 @@ export const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* 6. Main Product Feed (2-Column Grid) */}
-        <View style={styles.feedContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {selectedCategory !== 'All' ? `${selectedCategory.toUpperCase()} COLLECTION` : 'CURATED FOR YOU'}
-            </Text>
-            <Text style={styles.productCount}>{displayProducts.length} items</Text>
-          </View>
-
-          <View style={styles.productGrid}>
-            {displayProducts.map((prod) => (
-              <ProductCard key={prod.id} product={prod} />
-            ))}
-          </View>
+        {/* 6. Feed Section Header */}
+        <View style={styles.feedHeader}>
+          <Text style={styles.sectionTitle}>
+            {selectedCategory !== 'All' ? `${selectedCategory.toUpperCase()} COLLECTION` : 'CURATED FOR YOU'}
+          </Text>
+          <Text style={styles.productCount}>{displayProducts.length} items</Text>
         </View>
+      </View>
+    );
+  }, [
+    selectedCategory,
+    handleSelectCategoryBubble,
+    trendingDeals,
+    handleSeeAllSale,
+    flashKeyExtractor,
+    renderFlashDeal,
+    departments,
+    selectedDepartment,
+    handleLookbookPress,
+    displayProducts.length,
+  ]);
 
-        {/* 7. Trust & Assurance Badges */}
-        <TrustBadges />
-      </ScrollView>
+  return (
+    <View style={styles.container}>
+      {/* Dynamic Mobile E-Commerce Header */}
+      <Header
+        showSearchPill={true}
+        showPromoBanner={true}
+        searchPlaceholder="Search 500+ handcrafted ethnic styles..."
+      />
+
+      <FlatList
+        data={displayProducts}
+        keyExtractor={keyExtractor}
+        numColumns={2}
+        renderItem={renderProductCard}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={TrustBadges}
+        columnWrapperStyle={styles.columnWrapper}
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />
+        }
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
+      />
     </View>
   );
 };
@@ -243,6 +293,10 @@ const styles = StyleSheet.create({
   },
   scrollBody: {
     paddingBottom: spacing.xxxl,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
   },
   sectionContainer: {
     marginTop: spacing.md,
@@ -379,19 +433,18 @@ const styles = StyleSheet.create({
     color: colors.surface,
     letterSpacing: 0.5,
   },
-  feedContainer: {
+  feedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   productCount: {
     fontFamily: fonts.regular,
     fontSize: 11,
     color: colors.textMuted,
-  },
-  productGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
   },
 });
 

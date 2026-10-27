@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../api/api';
 import { useAuth } from './AuthContext';
 
@@ -40,7 +40,7 @@ export const WishlistProvider = ({ children }) => {
     return () => {
       isMounted = false;
     };
-  }, [token, currentUser?.id, currentUser?._id]);
+  }, [token, currentUser]);
 
   const toggleWishlist = useCallback(
     async (product) => {
@@ -131,28 +131,43 @@ export const WishlistProvider = ({ children }) => {
     }
   }, [token]);
 
+  const wishlistSet = useMemo(() => {
+    return new Set(wishlist.map((id) => (id?.toString?.() || id)));
+  }, [wishlist]);
+
   const isWishlisted = useCallback(
     (productId) => {
       if (!productId || !token) return false;
       const stringId = (productId?.id || productId?._id || productId).toString();
-      return wishlist.some((id) => (id?.toString?.() || id) === stringId);
+      return wishlistSet.has(stringId);
     },
-    [wishlist, token]
+    [wishlistSet, token]
+  );
+
+  const contextValue = useMemo(
+    () => ({
+      wishlist,
+      wishlistProducts,
+      wishlistCount: wishlist.length,
+      isLoading,
+      toggleWishlist,
+      removeFromWishlist,
+      clearWishlist,
+      isWishlisted,
+    }),
+    [
+      wishlist,
+      wishlistProducts,
+      isLoading,
+      toggleWishlist,
+      removeFromWishlist,
+      clearWishlist,
+      isWishlisted,
+    ]
   );
 
   return (
-    <WishlistContext.Provider
-      value={{
-        wishlist,
-        wishlistProducts,
-        wishlistCount: wishlist.length,
-        isLoading,
-        toggleWishlist,
-        removeFromWishlist,
-        clearWishlist,
-        isWishlisted,
-      }}
-    >
+    <WishlistContext.Provider value={contextValue}>
       {children}
     </WishlistContext.Provider>
   );

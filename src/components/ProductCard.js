@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useStore } from '../context/StoreContext';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - spacing.md * 2 - spacing.sm) / 2;
 
-export const ProductCard = ({ product, style }) => {
+const ProductCardComponent = ({ product, style }) => {
   const navigation = useNavigation();
   const {
     isWishlisted,
@@ -26,22 +26,24 @@ export const ProductCard = ({ product, style }) => {
     removeCartItem,
   } = useStore();
 
-  if (!product) return null;
-
-  const prodId = product.id || product._id;
-  const saved = isWishlisted(prodId);
-  const [selectedColor, setSelectedColor] = React.useState(
-    product.selectedColor || product.colors?.[0] || { name: 'Standard', hex: '#1D241C' }
+  const prodId = product?.id || product?._id;
+  const saved = prodId ? isWishlisted(prodId) : false;
+  const [selectedColor, setSelectedColor] = useState(
+    product?.selectedColor || product?.colors?.[0] || { name: 'Standard', hex: '#1D241C' }
   );
-  const cartItem = getCartItem(prodId, null, selectedColor?.name || selectedColor);
+  const selectedColorName = selectedColor?.name || (typeof selectedColor === 'string' ? selectedColor : '');
+  const cartItem = prodId ? getCartItem(prodId, null, selectedColorName) : null;
   const cartQty = cartItem?.quantity || 0;
 
-  const discountPercent =
-    product.originalPrice && product.originalPrice > product.price
-      ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-      : null;
+  const discountPercent = useMemo(() => {
+    if (product?.originalPrice && product.originalPrice > product.price) {
+      return Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100);
+    }
+    return null;
+  }, [product?.originalPrice, product?.price]);
 
-  const activeColorImage = React.useMemo(() => {
+  const activeColorImage = useMemo(() => {
+    if (!product) return '';
     const colorName = (selectedColor?.name || (typeof selectedColor === 'string' ? selectedColor : '')).trim().toLowerCase();
     if (colorName && Array.isArray(product.colorImages) && product.colorImages.length > 0) {
       const match = product.colorImages.find(
@@ -51,31 +53,34 @@ export const ProductCard = ({ product, style }) => {
         return match.images[0];
       }
     }
-    return product.image || product.galleryImages?.[0];
-  }, [selectedColor, product.colorImages, product.image, product.galleryImages]);
+    return product.image || product.galleryImages?.[0] || '';
+  }, [selectedColor, product]);
 
-  const handleCardPress = () => {
+  const handleCardPress = useCallback(() => {
+    if (!product) return;
     navigation.navigate('ProductDetail', { product: { ...product, image: activeColorImage, selectedColor }, id: prodId });
-  };
+  }, [navigation, product, activeColorImage, selectedColor, prodId]);
 
-  const handleWishlistPress = (e) => {
+  const handleWishlistPress = useCallback(() => {
+    if (!product) return;
     toggleWishlist({ ...product, image: activeColorImage, selectedColor });
-  };
+  }, [toggleWishlist, product, activeColorImage, selectedColor]);
 
-  const handleQuickAdd = () => {
+  const handleQuickAdd = useCallback(() => {
+    if (!product) return;
     addToCart({ ...product, image: activeColorImage }, product.sizes?.[0] || 'Standard', selectedColor, 1);
-  };
+  }, [addToCart, product, activeColorImage, selectedColor]);
 
-  const handleIncrement = () => {
+  const handleIncrement = useCallback(() => {
     if (!cartItem) {
       handleQuickAdd();
       return;
     }
     const targetId = cartItem.cartItemId || cartItem.id;
     updateCartQuantity(targetId, cartQty + 1);
-  };
+  }, [cartItem, handleQuickAdd, updateCartQuantity, cartQty]);
 
-  const handleDecrement = () => {
+  const handleDecrement = useCallback(() => {
     if (!cartItem) return;
     const targetId = cartItem.cartItemId || cartItem.id;
     if (cartQty > 1) {
@@ -83,7 +88,9 @@ export const ProductCard = ({ product, style }) => {
     } else {
       removeCartItem(targetId);
     }
-  };
+  }, [cartItem, updateCartQuantity, cartQty, removeCartItem]);
+
+  if (!product) return null;
 
   return (
     <TouchableOpacity
@@ -97,6 +104,7 @@ export const ProductCard = ({ product, style }) => {
           source={{ uri: activeColorImage }}
           style={styles.image}
           resizeMode="cover"
+          fadeDuration={0}
         />
 
         {/* Top Badges: Discount or Custom Badge */}
@@ -444,12 +452,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  moreColorsText: {
-    fontFamily: fonts.regular,
-    fontSize: 9,
-    color: colors.textMuted,
-    marginLeft: 2,
-  },
 });
 
+export const ProductCard = memo(ProductCardComponent);
 export default ProductCard;

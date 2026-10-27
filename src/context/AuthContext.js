@@ -155,16 +155,38 @@ export const AuthProvider = ({ children }) => {
               })
             : 'Recent',
           createdAt: o.createdAt || new Date().toISOString(),
-          items: (o.items || []).map((i) => ({
-            ...i,
-            id: i._id || i.product?._id || i.id,
-            name: i.name || i.product?.name || 'Garment Piece',
-            price: Number(i.price !== undefined ? i.price : (i.product?.price || 0)),
-            quantity: Number(i.quantity || 1),
-            size: i.selectedSize || i.size || 'Standard',
-            color: typeof i.selectedColor === 'object' ? i.selectedColor?.name : (i.selectedColor || i.color || 'Standard'),
-            image: i.image || i.product?.image || (Array.isArray(i.product?.images) && i.product.images[0]) || '',
-          })),
+          items: (o.items || []).map((i) => {
+            const rawProd = i.product || {};
+            const selectedColor = i.selectedColor || { name: i.color || 'Standard', hex: '#1D241C' };
+            const colorName = (selectedColor.name || (typeof selectedColor === 'string' ? selectedColor : '')).trim().toLowerCase();
+
+            // Check for color-specific image match in product.colorImages
+            let matchedColorImage = '';
+            if (colorName && Array.isArray(rawProd.colorImages) && rawProd.colorImages.length > 0) {
+              const match = rawProd.colorImages.find(
+                (ci) => (ci.color || '').trim().toLowerCase() === colorName
+              );
+              if (match && Array.isArray(match.images) && match.images.length > 0) {
+                matchedColorImage = match.images[0];
+              }
+            }
+            const itemImg = matchedColorImage || i.image || rawProd.image || (Array.isArray(rawProd.images) && rawProd.images[0]) || '';
+
+            return {
+              ...i,
+              id: i._id || i.product?._id || i.id,
+              name: i.name || rawProd.name || 'Garment Piece',
+              sku: i.sku || rawProd.sku || '',
+              variantId: i.variantId || '',
+              price: Number(i.price !== undefined ? i.price : (rawProd.price || 0)),
+              quantity: Number(i.quantity || 1),
+              size: i.selectedSize || i.size || 'Standard',
+              color: selectedColor.name || selectedColor || 'Standard',
+              selectedColor: typeof selectedColor === 'object' ? selectedColor : { name: selectedColor, hex: '#1D241C' },
+              image: itemImg,
+              product: rawProd,
+            };
+          }),
         }));
         setUserOrders(normalized);
       }
